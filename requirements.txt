@@ -1,0 +1,16 @@
+# ---------------------------------------------------------------------------
+# Runtime dependencies (serving + offline build).
+# Deliberately minimal: ALS, item2vec and the ANN search are implemented from
+# scratch in NumPy, so `implicit`, `faiss` and `lightgbm` are NOT required.
+# This keeps the deployed container small and the build fully reproducible.
+# ---------------------------------------------------------------------------
+numpy>=1.26,<2.1
+pandas>=2.0
+scipy>=1.11
+scikit-learn>=1.4
+fastapi>=0.110
+uvicorn[standard]>=0.30
+pydantic>=2.5
+PyYAML>=6.0
+requests>=2.31
+jinja2>=3.1

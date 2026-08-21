@@ -1,0 +1,15 @@
+# ---------------------------------------------------------------------------
+# OPTIONAL upgrades. The system runs fully without any of these.
+#
+#   sentence-transformers : swaps TF-IDF+SVD content vectors for neural
+#                           sentence embeddings (better semantic recall).
+#                           Used at BUILD time only -- the embedding matrix is
+#                           written to artifacts/ and served with plain NumPy,
+#                           so the runtime image never needs torch.
+#   lightgbm              : alternative gradient-boosted ranker (we default to
+#                           sklearn's HistGradientBoosting, which is bundled).
+#   pytest                : test suite.
+# ---------------------------------------------------------------------------
+sentence-transformers>=2.6
+lightgbm>=4.0
+pytest>=8.0

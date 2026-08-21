@@ -1,0 +1,117 @@
+# ===========================================================================
+#  YouTube-style Video Recommender -- single source of truth for every knob.
+#  Everything the pipeline does is reproducible from this file + the seed.
+# ===========================================================================
+
+project:
+  name: "ReelRank - a YouTube-style video recommender"
+  seed: 42
+  # Pin the build's "now". The catalog dates publish times relative to it and
+  # the simulator places sessions in a window ending at it, so pinning makes
+  # the whole pipeline byte-identical across machines and across days.
+  # null = use today (right for a live demo, where "trending" means now).
+  reference_date: null
+
+# --- Where the video catalog comes from -----------------------------------
+catalog:
+  # auto: try youtube_api -> kaggle -> synthetic, in that order.
+  source: auto            # auto | youtube_api | kaggle | synthetic
+  target_size: 6000
+  youtube_api:
+    api_key_env: YOUTUBE_API_KEY
+    queries_per_category: 6
+    max_results_per_query: 50
+  kaggle:
+    csv_glob: "data/raw/*videos.csv"
+  synthetic:
+    n_videos: 6000
+    n_channels: 420
+
+# --- The user-behaviour simulator that produces watch logs ----------------
+# See docs/METHODOLOGY.md for the justification of every parameter here.
+simulator:
+  n_users: 4000
+  sessions_per_user_mean: 6.0
+  min_session_len: 3
+  max_session_len: 22
+  popularity_bias: 0.55       # P(impression) ~ views ** popularity_bias
+  position_bias_decay: 0.82   # P(examine rank r) ~ decay ** r
+  exploration_rate: 0.12      # chance a user steps outside their personas
+  persona_drift: 0.05         # per-session probability of taste shift
+  completion_noise: 0.18      # std-dev of watch-fraction noise
+  min_interactions_per_user: 5
+
+# --- Item text representation ---------------------------------------------
+features:
+  text_backend: auto          # auto | tfidf_svd | sentence_transformers
+  svd_dims: 256
+  st_model: "sentence-transformers/all-MiniLM-L6-v2"
+  tfidf_max_features: 60000
+  tfidf_ngram_max: 2
+
+# --- Stage 1: candidate generation ----------------------------------------
+recall:
+  content_k: 150
+  cf_item_k: 150
+  als_k: 150
+  channel_k: 60
+  trending_k: 60
+  max_candidates: 400
+  # Reciprocal Rank Fusion. score(d) = sum_s w_s / (rrf_k + rank_s(d)).
+  # rrf_k flattens the head of the curve so no single confident source can
+  # steamroll the fusion; higher = flatter = more democratic.
+  rrf_k: 60
+  covisit_damping: 0.5   # 0.5 = cosine; higher punishes popular items harder
+  weights:
+    content_history: 1.0
+    cf_covisit: 1.15      # strongest personalisation signal we have
+    cf_als: 1.10
+    channel: 0.75
+    trending: 0.45        # a floor of fresh/popular, never the main course
+
+# --- Implicit-feedback ALS hyper-parameters -------------------------------
+als:
+  factors: 96
+  regularization: 0.05
+  alpha: 30.0                 # confidence scaling: c_ui = 1 + alpha * r_ui
+  iterations: 18
+
+# --- Stage 2: the learned ranker ------------------------------------------
+ranker:
+  model: hgb                  # hgb | logistic | lightgbm
+  # watch_time: weight positives by watch seconds so the learned ODDS estimate
+  #             expected watch time (Covington et al. 2016).
+  # click:      plain click prediction -- kept so the two can be compared in
+  #             the evaluation, which is where clickbait shows up.
+  objective: watch_time       # watch_time | click
+  use_ips: true               # inverse-propensity correction for position bias
+  negatives_per_positive: 4      # in-feed negatives (real impressions)
+  random_negatives_per_positive: 2  # uniform catalog negatives; without these
+                                    # the ranker is out-of-distribution when
+                                    # scoring the full catalog at serving time
+  test_size: 0.2
+  learning_rate: 0.08
+  max_iter: 350
+
+# --- Stage 3: re-ranking policy -------------------------------------------
+policy:
+  mmr_lambda: 0.72            # 1.0 = pure relevance, 0.0 = pure diversity
+  max_per_channel: 2
+  freshness_halflife_days: 21
+  freshness_weight: 0.08
+  exploration_slots: 2        # reserved "break the bubble" slots per page
+
+# --- Offline evaluation protocol ------------------------------------------
+evaluation:
+  k_values: [5, 10, 20]
+  protocol: leave_last_n      # leave_last_n | temporal
+  n_holdout: 2
+  max_eval_users: 1500
+  catalog_sample_for_coverage: 2000
+
+# --- Serving --------------------------------------------------------------
+serving:
+  default_n: 24
+  cache_size: 512
+  host: "0.0.0.0"
+  port: 7860                  # Hugging Face Spaces default

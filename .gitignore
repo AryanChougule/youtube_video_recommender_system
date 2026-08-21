@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# Generated data and models are NOT committed.
+#
+# Everything under data/processed/ and artifacts/ is reproduced deterministically
+# by `python scripts/build_all.py` (~7 min), and the Dockerfile builds it into the
+# image. Committing ~25MB of parquet/npy would bloat clone times to save a step
+# that is already one command -- and stale artifacts in git are worse than none,
+# because artifacts.py would happily serve them against changed code.
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+.env
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+Thumbs.db
+
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+artifacts/*
+!artifacts/.gitkeep
+
+# local editor/agent config
+.claude/
