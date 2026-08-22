@@ -28,7 +28,8 @@ We defend against circularity in three ways:
 
 The behavioural model, stage by stage
 -------------------------------------
-    feed (logging policy)  ->  examine (cascade)  ->  click  ->  watch  ->  like
+    session intent -> feed (logging policy) -> examine (cascade)
+                   -> click -> watch -> like / satisfied / dismissed
 
 * **Feed / logging policy.**  A weak incumbent recommender: part popularity,
   part persona-relevant, part "related to what you just watched" (autoplay).
@@ -43,6 +44,24 @@ The behavioural model, stage by stage
   mean, penalised by video length.  This is what lets us optimise WATCH TIME
   rather than clicks -- the single most consequential objective change in
   YouTube's own history.
+* **Session intent.**  A person's stable persona is not what they want *right
+  now*. With probability ``intent_rate`` a session is focused on a single
+  micro-topic, sometimes one OUTSIDE their persona entirely -- the "learning
+  RAG for an interview tomorrow" case that a profile-only recommender cannot
+  serve. Ground truth is returned separately and never reaches the model.
+* **Satisfaction vs watch time.**  Clickbait is a latent per-video property
+  that wins the click.  Measured on the generated log, its net effect on watch
+  fraction is close to ZERO (corr +0.01) -- it holds attention slightly, but it
+  also draws clicks from viewers with weaker affinity, and the two effects
+  cancel.  Satisfaction is a different story:
+
+      top-decile clickbait : watch 0.425, satisfied 42%
+      bottom-half clickbait: watch 0.438, satisfied 73%
+
+  So watch time is nearly BLIND to clickbait while satisfaction is highly
+  sensitive to it.  That is precisely the gap a watch-time-only objective
+  cannot close, and it is why the multi-task ranker earns its place rather
+  than merely adding complexity.
 """
 
 from __future__ import annotations
@@ -70,6 +89,7 @@ W_POPULARITY = 0.55   # scaled per-user by "mainstream-ness"
 W_QUALITY = 0.45      # hidden appeal, partially visible via engagement rate
 W_DURATION_FIT = 0.40 # match between video length and user preference
 CLICK_BIAS = -1.95    # intercept; sets the base rate
+W_CLICKBAIT = 1.30    # clickbait wins clicks but destroys satisfaction
 
 
 @dataclass
@@ -77,6 +97,7 @@ class SimulationResult:
     interactions: pd.DataFrame
     users: pd.DataFrame
     user_topics: np.ndarray          # (n_users, n_topics) ground truth
+    session_intent: pd.DataFrame     # per-session ground truth; NEVER served
 
 
 def _zscore(x: np.ndarray) -> np.ndarray:
@@ -178,6 +199,8 @@ def simulate(
     quality = catalog["latent_quality"].to_numpy(dtype=np.float64) \
         if "latent_quality" in catalog.columns else np.ones(n_items)
     quality_z = _zscore(np.log(quality))
+    clickbait = (catalog["latent_clickbait"].to_numpy(dtype=np.float64)
+                 if "latent_clickbait" in catalog.columns else np.zeros(n_items))
 
     duration_min = catalog["duration_seconds"].to_numpy(dtype=np.float64) / 60.0
     published = catalog["published_at"].to_numpy(dtype="datetime64[ns]")
@@ -200,6 +223,8 @@ def simulate(
     rows_click: list[int] = []
     rows_wf: list[float] = []
     rows_like: list[int] = []
+    rows_sat: list[int] = []
+    rows_dismiss: list[int] = []
 
     mainstream = users["mainstream"].to_numpy()
     pref_minutes = users["preferred_minutes"].to_numpy()
@@ -210,6 +235,7 @@ def simulate(
     ).clip(1, 30)
 
     session_counter = 0
+    session_intent_rows: list[tuple[int, int, int, float]] = []
     beta_k = max(4.0, 1.0 / max(cfg.completion_noise, 1e-3) ** 2)
 
     for u in range(cfg.n_users):
@@ -225,6 +251,33 @@ def simulate(
                 u_topics /= u_topics.sum()
 
             session_counter += 1
+
+            # ---- SESSION INTENT --------------------------------------
+            # A person's long-run taste ("likes AI, cooking, gaming") is not
+            # what they want *right now* ("learning RAG for an interview
+            # tomorrow"). Modelling only the stable profile is the reason a
+            # single-interest history collapses into a monoculture.
+            #
+            # With probability `intent_rate` the session is FOCUSED: one
+            # micro-topic dominates, and it is occasionally a topic outside
+            # the persona entirely -- which is exactly the case a
+            # profile-only recommender cannot serve.
+            has_intent = rng.random() < cfg.intent_rate
+            if has_intent:
+                if rng.random() < cfg.intent_offpersona_rate:
+                    focus = int(rng.integers(0, n_topics))       # genuinely new
+                else:
+                    focus = int(rng.choice(n_topics, p=u_topics))
+                strength = float(rng.beta(cfg.intent_strength_a, cfg.intent_strength_b))
+                session_topics = (1.0 - strength) * u_topics
+                session_topics[focus] += strength
+                session_topics = session_topics / session_topics.sum()
+            else:
+                focus, strength = -1, 0.0
+                session_topics = u_topics
+
+            session_intent_rows.append((session_counter, int(has_intent), focus, strength))
+
             t0 = window_start + pd.Timedelta(seconds=float(rng.random() * window_seconds))
             clock = t0.timestamp()
 
@@ -246,7 +299,7 @@ def simulate(
                 if n_pop:
                     cand += rng.choice(n_items, size=n_pop * 3, p=pop_p).tolist()
                 if n_persona:
-                    hot = rng.choice(n_topics, size=n_persona * 3, p=u_topics)
+                    hot = rng.choice(n_topics, size=n_persona * 3, p=session_topics)
                     cand += [int(topic_tops[t, rng.integers(0, topic_tops.shape[1])]) for t in hot]
                 if n_rel and last_item is not None:
                     picks = rng.integers(0, neighbours.shape[1], size=n_rel * 3)
@@ -278,7 +331,7 @@ def simulate(
                 idx = np.asarray(feed)
 
                 # ---- click probability --------------------------------
-                affinity = item_topics[idx] @ u_topics          # ~0.01 .. 0.35
+                affinity = item_topics[idx] @ session_topics    # ~0.01 .. 0.35
                 aff_scaled = affinity * 12.0
                 dur_fit = -np.abs(np.log(duration_min[idx] / pref_minutes[u]))
                 logit = (
@@ -287,6 +340,7 @@ def simulate(
                     + W_POPULARITY * mainstream[u] * 2.0 * log_views_z[idx]
                     + W_QUALITY * quality_z[idx]
                     + W_DURATION_FIT * dur_fit
+                    + W_CLICKBAIT * clickbait[idx]      # wins the click...
                 )
                 p_click = 1.0 / (1.0 + np.exp(-logit))
 
@@ -304,16 +358,36 @@ def simulate(
                     item = int(item)
                     is_click = int(pos == clicked_pos)
                     wf = 0.0
-                    liked = 0
+                    liked = satisfied = dismissed = 0
                     if is_click:
                         aff_n = float(np.clip(affinity[pos] * 6.0, 0.0, 1.0))
                         base = 0.30 + 0.45 * aff_n + 0.12 * float(np.tanh(quality_z[item]))
                         length_penalty = float(
                             np.exp(-max(duration_min[item] - pref_minutes[u], 0.0) / 25.0)
                         )
-                        mean_wf = float(np.clip(base * length_penalty, 0.03, 0.97))
+                        # ...and holds attention slightly (you keep waiting for
+                        # the promised payoff). The NET effect on watch time is
+                        # ~zero, because clickbait also pulls in lower-affinity
+                        # viewers who watch less -- the two cancel. Verified in
+                        # tests/test_units.py.
+                        bait = float(clickbait[item])
+                        mean_wf = float(np.clip(
+                            base * length_penalty * (1.0 + 0.18 * bait), 0.03, 0.97))
                         wf = float(rng.beta(mean_wf * beta_k, (1.0 - mean_wf) * beta_k))
                         liked = int(rng.random() < min(0.45, 0.02 + 0.30 * wf * wf))
+
+                        # ...but leaves you feeling cheated. THIS is what makes
+                        # satisfaction diverge from watch time, and therefore
+                        # what makes a multi-objective ranker worth building.
+                        sat_logit = (
+                            -0.55
+                            + 3.0 * float(np.clip(affinity[pos] * 6.0, 0.0, 1.0))
+                            + 0.9 * float(np.tanh(quality_z[item]))
+                            + 1.7 * wf
+                            - 3.4 * bait
+                        )
+                        satisfied = int(rng.random() < 1.0 / (1.0 + np.exp(-sat_logit)))
+                        dismissed = int(wf < 0.12)
                         seen.add(item)
                         last_item = item
                         clock += duration_min[item] * 60.0 * wf + 12.0
@@ -326,6 +400,8 @@ def simulate(
                     rows_click.append(is_click)
                     rows_wf.append(wf)
                     rows_like.append(liked)
+                    rows_sat.append(satisfied if is_click else 0)
+                    rows_dismiss.append(dismissed if is_click else 0)
 
                 if clicked_pos < 0:
                     # Nothing appealed; the user leaves with probability 0.6.
@@ -353,6 +429,8 @@ def simulate(
         "watch_fraction": wf_arr,
         "watch_seconds": wf_arr * durations[item_arr],
         "liked": rows_like,
+        "satisfied": rows_sat,
+        "dismissed": rows_dismiss,
     })
     inter = coerce_interactions(inter).sort_values(["user_id", "ts"]).reset_index(drop=True)
 
@@ -374,4 +452,19 @@ def simulate(
         print(f"  clicks            : {n_click:,}  (CTR {n_click / max(len(inter),1):.1%})")
         print(f"  clicks per user   : {n_click / max(len(users),1):.1f}")
 
-    return SimulationResult(interactions=inter, users=users, user_topics=user_topics)
+    intent_df = pd.DataFrame(
+        session_intent_rows,
+        columns=["session_id", "has_intent", "intent_topic", "intent_strength"],
+    )
+    intent_df["session_id"] = "s" + intent_df["session_id"].astype(str)
+    intent_df = intent_df[intent_df["session_id"].isin(set(inter["session_id"]))]
+
+    if verbose:
+        focused = int(intent_df["has_intent"].sum())
+        print(f"  sessions           : {len(intent_df):,} "
+              f"({focused / max(len(intent_df), 1):.0%} with a focused intent)")
+        sat = inter[inter["clicked"] == 1]["satisfied"].mean()
+        print(f"  satisfaction rate  : {sat:.1%} of clicks")
+
+    return SimulationResult(interactions=inter, users=users, user_topics=user_topics,
+                            session_intent=intent_df)

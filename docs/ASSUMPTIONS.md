@@ -67,7 +67,7 @@ true durations.
 
 ### A7 · A 96-dimensional latent space is enough
 
-**Why:** 96 factors over 6,000 items and 3,803 users, at 0.51% density. More factors would
+**Why:** 96 factors over 6,000 items and 3,831 users, at 0.54% density. More factors would
 overfit sparse data.
 
 **If wrong:** a larger catalog needs more capacity. `als.factors` is a config knob; the cost is

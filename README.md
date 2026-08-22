@@ -100,21 +100,33 @@ Nothing else changes — every source is normalised to the same schema at the bo
 Measured on a **global temporal split** (train on the past, test on the future), 1,500 held-out
 users, 6,000-video catalog. Every model upstream of the ranker respects the same cutoff.
 
-### The headline finding: the standard offline protocol is invalid here
+### The headline finding: full-catalog NDCG is the wrong metric here
 
-The usual recipe — hide future clicks, retrieve from the full catalog, report NDCG — silently
-measures **the logging policy**, not the recommender. We proved it rather than asserting it,
-by scoring an **oracle** built from the simulator's own generative parameters:
+The usual recipe — hide future clicks, retrieve from the full catalog, report
+NDCG — is dominated by retrieval breadth and popularity, not ranking quality.
+The cleanest evidence is that **adding the learned ranker moves the two families
+of metric in opposite directions**:
 
-| Full-catalog retrieval | NDCG@10 |
-|---|---|
-| popularity baseline | **0.0178** |
-| **ORACLE** (true user personas + true hidden video quality) | 0.0169 ❌ |
+| | full-catalog NDCG@10 | Protocol A top-1 |
+|---|---|---|
+| Stage 1 recall only | **0.0125** | 0.1840 † |
+| + learned ranker (shipped) | 0.0107 ↓ | **0.1930** ↑ |
 
-**The data-generating process itself loses to a popularity list.** A user can only click what
-they were shown; the incumbent policy was popularity-heavy, so a better recommender is
-*penalised* for surfacing something the user never got the chance to click. Any conclusion
-drawn from full-catalog NDCG on logged data is unsafe.
+† *content-only, the strongest single Stage-1 signal.*
+
+Two metrics disagreeing about the same change means one of them is wrong **for
+this purpose**. The full-catalog metric rewards casting a wide net; a popularity
+list scores 0.0121, beating content-based retrieval (0.0090) outright.
+
+An **oracle** built from the simulator's own generative parameters scores 0.0161
+— so the metric is not pure noise, and there is real headroom our models do not
+capture. But the ranking that wins on it is not the ranking that wins on
+observed labels, which is why the counterfactual protocols below are the ones
+quoted.
+
+> On an earlier build (before latent clickbait was added to the generator) the
+> oracle scored *below* the popularity baseline outright. Both versions point the
+> same way; the current numbers are the ones that reproduce.
 
 ### Protocol A — re-ranking logged impressions (counterfactually valid)
 
@@ -123,31 +135,32 @@ This is the offline protocol that best predicts online lift.
 
 | Scorer | top-1 | NDCG | MRR |
 |---|---|---|---|
-| `[ref] shown position` † | 0.7365 | 0.8920 | 0.8549 |
-| **LEARNED RANKER (19 features)** | **0.2090** | **0.5707** | **0.4366** |
-| content only | 0.2025 | 0.5671 | 0.4320 |
-| CF — ALS only | 0.1755 | 0.5400 | 0.3982 |
-| CF — co-visitation only | 0.1375 | 0.4943 | 0.3419 |
-| popularity | 0.1338 | 0.4963 | 0.3438 |
-| random | 0.1305 | 0.4933 | 0.3400 |
+| `[ref] shown position` ‡ | 0.7713 | 0.9086 | 0.8768 |
+| **LEARNED RANKER (19 features)** | **0.1930** | **0.5562** | **0.4183** |
+| content only | 0.1840 | 0.5514 | 0.4119 |
+| CF — ALS only | 0.1622 | 0.5259 | 0.3804 |
+| random | 0.1415 | 0.5018 | 0.3507 |
+| popularity | 0.1323 | 0.4949 | 0.3417 |
+| CF — co-visitation only | 0.1280 | 0.4928 | 0.3392 |
 
-† *Not a competing model.* Position **causes** clicks under a cascade click model, so this
+‡ *Not a competing model.* Position **causes** clicks under a cascade click model, so this
 row measures the size of position bias — the ceiling on what re-ranking could ever be worth —
-not video quality.
+not video quality. Note popularity and co-visitation now score *below random* here: on a
+per-page basis, "show the globally popular thing" is actively worse than chance.
 
 ### Protocol B — 1 held-out positive vs 100 sampled negatives
 
 | Scorer | HR@10 | NDCG@10 | mean rank |
 |---|---|---|---|
-| content only | **0.4753** | 0.2389 | 23.85 |
-| **LEARNED RANKER** | 0.4679 | **0.2410** | **21.34** |
-| CF — ALS only | 0.3384 | 0.1748 | 33.05 |
-| popularity | 0.2608 | 0.1429 | 36.96 |
-| CF — co-visitation only | 0.1455 | 0.0798 | 48.21 |
-| random | 0.0926 | 0.0433 | 51.29 |
+| content only | **0.3703** | **0.1821** | 30.91 |
+| **LEARNED RANKER** | 0.3567 | 0.1776 | **28.49** |
+| CF — ALS only | 0.2792 | 0.1484 | 37.24 |
+| popularity | 0.2665 | 0.1484 | 36.29 |
+| CF — co-visitation only | 0.1428 | 0.0758 | 48.75 |
+| random | 0.0999 | 0.0450 | 51.27 |
 
-The hybrid ranker wins on Protocol A, and on Protocol B takes both the best NDCG@10 and the
-best mean rank (content-only edges it on raw HR@10).
+The hybrid ranker wins Protocol A outright and takes the best mean rank on Protocol B, where
+content-only edges it on HR@10.
 Sampled metrics are known to flatter simpler models ([Krichene & Rendle, KDD 2020](https://dl.acm.org/doi/10.1145/3394486.3403226)),
 which is why both are reported and neither alone.
 
@@ -155,10 +168,10 @@ which is why both are reported and neither alone.
 
 | Strategy | coverage | Gini (exposure) | novelty (bits) | intra-list diversity | p50 latency |
 |---|---|---|---|---|---|
-| popularity | 0.005 | 0.997 | 9.17 | 0.938 | 0.8 ms |
-| content only | 0.878 | 0.526 | 12.77 | 0.533 | 0.8 ms |
-| CF — ALS only | 0.563 | 0.767 | 11.30 | 0.847 | 0.3 ms |
-| **FULL pipeline** | **0.571** | 0.799 | 11.97 | 0.717 | 20.8 ms |
+| popularity | 0.004 | 0.997 | 9.69 | 0.863 | 0.7 ms |
+| content only | 0.890 | 0.509 | 12.78 | 0.536 | 0.5 ms |
+| CF — ALS only | 0.572 | 0.764 | 11.41 | 0.855 | 0.3 ms |
+| **FULL pipeline** | **0.564** | 0.798 | 12.04 | 0.718 | 15.0 ms |
 
 The popularity baseline reaches **0.5% catalog coverage with a Gini of 0.997** — it shows
 essentially the same 30 videos to everyone. That is what accuracy metrics alone will not tell you,
@@ -166,12 +179,47 @@ and why coverage/Gini/novelty are treated as first-class here.
 
 ### Ranker
 
-`AUC 0.697` · `watch-time-weighted AUC 0.790` · `within-feed top-1 28.9%` (random 14.3%) ·
-824k training rows · 19 features · trained on cross-fitted CF features.
-Top features by permutation importance: `category_affinity`, `log_duration_min`,
+`AUC 0.663` · `watch-time-weighted AUC 0.755` · `within-feed top-1 25.8%` (random 14.3%) ·
+878k training rows · 19 features · trained on cross-fitted CF features.
+Top features by permutation importance: `log_duration_min`, `category_affinity`,
 `content_sim_profile`, `log_views`, `engagement_rate`.
+Plus six multi-objective heads — see [INTENT_AND_OBJECTIVES.md](docs/INTENT_AND_OBJECTIVES.md).
 
 ---
+
+## Two product hypotheses, tested rather than assumed
+
+Full write-up in [INTENT_AND_OBJECTIVES.md](docs/INTENT_AND_OBJECTIVES.md).
+
+**Session intent** — *"what does this person want right now?"* rather than
+*"what do they generally like?"*. Blending a session vector into the query helps
+exactly the cohort it should (**+7.5%** on focused, off-persona sessions) and
+hurts on browsing sessions (**−3.4%**). Net across all sessions: **−0.1%**.
+
+The explanation is the payoff. The profile is already recency-weighted with a
+half-life of 8 positions, so `cos(profile, session vector) = 0.803` — **recency
+decay is already a soft session model.** Remove it and session blending suddenly
+works (+2.6% on a uniform-mean profile). So: shipped for *explainability* (the
+UI names your current focus), with blending off by default and exposed as a
+slider so the negative result is demonstrable.
+
+**Multi-objective ranking** — six calibrated heads (click / long-watch /
+completion / liked / satisfied / dismissed), combined by weights chosen **per
+request**. Completion@1 nearly doubles (0.0055 → 0.0100, **+82%**) and the
+Recommendation Lab can switch the system's objective with no retraining.
+
+But it does *not* reduce clickbait exposure, and the reason is the useful part:
+
+| target | GBDT R² from all item features |
+|---|---|
+| latent quality | **0.6355** |
+| latent clickbait | **−0.1122** |
+
+**Clickbait is invisible to the feature set**, so no ranker can optimise it away.
+A multi-objective ranker can only trade off objectives it can *observe* — which
+is precisely why YouTube collects user surveys instead of inferring satisfaction
+from engagement metadata. That makes the next step a *feature* problem, not a
+model problem.
 
 ## Three bugs worth reading about
 
@@ -211,16 +259,20 @@ scripts/
   07_ablate_text_fields.py     which text fields to index (measured, not guessed)
   08_diagnose_ranker.py        is the ranker weak, or is the task near its noise ceiling?
   09_test_cases.py             runs every scenario in docs/TEST_CASES.md, live
+  10_evaluate_intent.py        does session intent improve ranking? (no -- and why)
+  11_evaluate_objectives.py    CTR vs watch-time vs satisfaction vs multi-objective
 src/recsys/
   data/       schema · topics · synthetic · simulator · youtube_api · kaggle_loader
   features/   text.py           TF-IDF+SVD (LSA), optional sentence-transformers
   recall/     content · cf (ALS + co-visitation, from scratch) · heuristic · blend (RRF)
   rank/       features · dataset (causal replay) · crossfit · ranker
   policy/     rerank.py         MMR, channel cap, freshness, exploration slots
+  intent.py   session intent detection (explanation; blending measured off)
+  rank/multitask.py  six calibrated heads, weights chosen per request
   engine.py   orchestration + explanations
   evaluate.py · counterfactual.py · metrics.py · split.py
   api/        FastAPI + the YouTube-style UI (vanilla JS, no build step)
-tests/        40 tests; the interesting ones are regressions for real bugs
+tests/        45 tests; the interesting ones are regressions for real bugs
 ```
 
 ## Documentation
@@ -235,6 +287,7 @@ tests/        40 tests; the interesting ones are regressions for real bugs
 | [ASSUMPTIONS.md](docs/ASSUMPTIONS.md) | every assumption made, and what breaks if it is wrong |
 | [DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md) | decisions with the rejected alternatives |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | what this system cannot do |
+| [INTENT_AND_OBJECTIVES.md](docs/INTENT_AND_OBJECTIVES.md) | session intent + multi-objective ranking: two hypotheses, tested |
 | [COMPARISON.md](docs/COMPARISON.md) | benchmarked against real YouTube |
 | [FUTURE_WORK.md](docs/FUTURE_WORK.md) | what I would build next, in priority order |
 | [LEARNING_NOTES.md](docs/LEARNING_NOTES.md) | the full course: theory behind every module |

@@ -23,6 +23,8 @@ import numpy as np
 import pandas as pd
 
 from .artifacts import Artifacts
+from .intent import DEFAULT_WINDOW, detect_intent
+from .data.schema import split_tags
 from .metrics import intra_list_diversity, novelty
 from .policy.rerank import apply_policy
 from .recall.blend import CandidateSet, reciprocal_rank_fusion
@@ -86,6 +88,8 @@ class RecommendationEngine:
         # which is a better proxy for "how often people actually meet this
         # video" than raw view_count.
         self.popularity = np.maximum(artifacts.covisitation.popularity, 0.0) + 1.0
+        # Tags per item, for naming the session's current focus in the UI.
+        self.tag_lists = [split_tags(t) for t in catalog["tags"].fillna("")]
 
     # ------------------------------------------------------------------
     # public surfaces
@@ -100,6 +104,8 @@ class RecommendationEngine:
         mmr_lambda: float | None = None,
         exploration_slots: int | None = None,
         max_per_channel: int | None = None,
+        objective_weights: dict[str, float] | None = None,
+        intent_alpha_scale: float | None = None,
         explain: bool = True,
     ) -> RecommendationResponse:
         cfg = self.cfg
@@ -139,7 +145,25 @@ class RecommendationEngine:
             [seed_idx] if seed_idx is not None else []
         )
         rank_weights = weights if hist_idx else [1.0] * len(rank_history)
-        ranker_scores = self._rank(rank_history, rank_weights, candidates)
+        ctx = self.art.features.build_context(rank_history, rank_weights)
+
+        # Session intent. Used for EXPLANATION by default; blending it into the
+        # query is off unless asked for, because it was measured not to help
+        # (the profile's recency decay already acts as a session model). See
+        # src/recsys/intent.py for the experiment.
+        intent = detect_intent(
+            self.art.text_index.vectors, rank_history, ctx.profile_vector,
+            window=DEFAULT_WINDOW, tag_lists=self.tag_lists,
+        )
+        scale = (cfg.policy.intent_alpha_scale if intent_alpha_scale is None
+                 else intent_alpha_scale)
+        if scale > 0 and intent.detected and len(rank_history):
+            blended = (scale * intent.alpha) * intent.session_vector +                       (1.0 - scale * intent.alpha) * ctx.profile_vector
+            norm = np.linalg.norm(blended)
+            if norm > 1e-9:
+                ctx.profile_vector = (blended / norm).astype(np.float32)
+
+        ranker_scores = self._rank(ctx, candidates, objective_weights)
         t_rank = (time.perf_counter() - t0) * 1000
 
         # ---- Stage 3: policy ----
@@ -182,7 +206,9 @@ class RecommendationEngine:
                 "n_candidates": len(candidates),
                 "catalog_size": self.art.n_items,
             },
-            diagnostics=self._diagnostics(policy.order),
+            diagnostics={**self._diagnostics(policy.order),
+                         "session_intent": intent.to_dict(),
+                         "intent_applied": round(scale, 3)},
         )
 
     def similar(self, video_id: str, n: int = 12) -> RecommendationResponse:
@@ -242,13 +268,20 @@ class RecommendationEngine:
             results["popular"] = art.trending.popular(k=cfg.recall.trending_k, exclude=exclude)
         return results
 
-    def _rank(self, hist_idx, weights, candidates: CandidateSet) -> np.ndarray:
+    def _rank(self, ctx, candidates: CandidateSet,
+              objective_weights: dict[str, float] | None = None) -> np.ndarray:
+        # Multi-objective path: the heads are fixed at training time but the
+        # OBJECTIVE is chosen per request, which is what lets the UI turn the
+        # system from engagement-maximising to satisfaction-maximising without
+        # retraining anything.
+        if objective_weights and self.art.multitask is not None:
+            matrix = self.art.features.build(ctx, candidates.indices)
+            return self.art.multitask.score(matrix, weights=objective_weights)
         if self.art.ranker is None:
             # Graceful degradation: without a ranker, fused recall order is a
             # perfectly serviceable ranking. The system should not 500 because
             # one artifact is missing.
             return candidates.fused_scores.astype(np.float32)
-        ctx = self.art.features.build_context(hist_idx, weights)
         matrix = self.art.features.build(ctx, candidates.indices)
         return self.art.ranker.score(matrix)
 

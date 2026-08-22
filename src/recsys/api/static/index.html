@@ -60,7 +60,28 @@
     </div>
 
     <div class="panel">
-      <h3>4 &middot; Pipeline diagnostics</h3>
+      <h3>4 &middot; Recommendation Lab</h3>
+      <div id="intent-box" class="intent-box">No session intent detected yet.</div>
+      <div class="preset-row">
+        <button class="btn btn-sm" data-preset="balanced">Balanced</button>
+        <button class="btn btn-sm" data-preset="engagement">Max engagement</button>
+        <button class="btn btn-sm" data-preset="satisfaction">Max satisfaction</button>
+        <button class="btn btn-sm" data-preset="discovery">Max discovery</button>
+      </div>
+      <div id="objectives"></div>
+      <div class="control" style="margin-top:12px">
+        <label>Session-intent blending <b id="v-intent">0.00</b></label>
+        <input type="range" id="intent" min="0" max="1" step="0.05" value="0">
+        <div class="control-hint">
+          Off by default &mdash; <b>measured</b> not to improve ranking, because the
+          profile&rsquo;s recency decay already acts as a session model.
+          Turn it up and watch the metrics not improve.
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>5 &middot; Pipeline diagnostics</h3>
       <div class="diag" id="diag">
         <div class="empty-note">Run a recommendation to see stage timings.</div>
       </div>

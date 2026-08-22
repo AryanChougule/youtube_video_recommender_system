@@ -66,6 +66,7 @@ def main() -> None:
     result.users.to_parquet(Paths.users, index=False)
     np.save(Paths.gt_item_topics, item_topics.astype(np.float32))
     np.save(Paths.gt_user_topics, result.user_topics.astype(np.float32))
+    result.session_intent.to_parquet(Paths.gt_session_intent, index=False)
 
     clicks = int(result.interactions["clicked"].sum())
     n_users = len(result.users)
@@ -76,13 +77,18 @@ def main() -> None:
         "ctr": round(clicks / max(len(result.interactions), 1), 4),
         "clicks_per_user": round(clicks / max(n_users, 1), 2),
         "matrix_density": round(clicks / max(n_users * len(catalog), 1), 6),
+        "n_sessions": int(len(result.session_intent)),
+        "sessions_with_intent": float(result.session_intent["has_intent"].mean()),
+        "satisfaction_rate": round(float(
+            result.interactions.loc[result.interactions["clicked"] == 1, "satisfied"].mean()), 4),
         "seed": cfg.project.seed,
         "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     })
     Paths.data_meta.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
     for path in (Paths.catalog, Paths.interactions, Paths.users,
-                 Paths.gt_item_topics, Paths.gt_user_topics, Paths.data_meta):
+                 Paths.gt_item_topics, Paths.gt_user_topics,
+                 Paths.gt_session_intent, Paths.data_meta):
         print(f"    {path.relative_to(Paths.root)}  ({path.stat().st_size / 1e6:.1f} MB)")
 
     print(f"\n  density {meta['matrix_density']:.4%}  |  "

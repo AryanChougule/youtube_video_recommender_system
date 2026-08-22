@@ -62,6 +62,11 @@ class RecommendRequest(BaseModel):
     mmr_lambda: float | None = Field(default=None, ge=0.0, le=1.0)
     exploration_slots: int | None = Field(default=None, ge=0, le=10)
     max_per_channel: int | None = Field(default=None, ge=0, le=10)
+    # Recommendation Lab: choose the OBJECTIVE per request. The multi-task
+    # heads are fixed at training time, so switching the objective costs one
+    # weighted sum -- no retraining, no redeploy.
+    objective_weights: dict[str, float] | None = None
+    intent_alpha_scale: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -144,9 +149,24 @@ def meta() -> dict:
             "freshness_halflife_days": cfg.policy.freshness_halflife_days,
         },
         "recall_weights": cfg.recall.weights,
+        "objectives": {
+            "available": list(cfg.ranker.objective_weights),
+            "default_weights": cfg.ranker.objective_weights,
+            "multitask_trained": art.multitask is not None,
+            "per_task_auc": (getattr(art.multitask, "metrics", None).per_task_auc
+                             if art.multitask is not None else {}),
+        },
+        "intent": {
+            "alpha_scale_default": cfg.policy.intent_alpha_scale,
+            "note": ("Blending is OFF by default: measured not to improve ranking "
+                     "because the profile's recency decay already acts as a session "
+                     "model. Detection still powers the 'current focus' label."),
+        },
     }
     for path, key in ((Paths.eval_report, "evaluation"),
-                      (Paths.artifacts / "ranker_report.json", "ranker_report")):
+                      (Paths.artifacts / "ranker_report.json", "ranker_report"),
+                      (Paths.artifacts / "intent_evaluation.json", "intent_evaluation"),
+                      (Paths.artifacts / "objective_evaluation.json", "objective_evaluation")):
         if path.exists():
             payload[key] = json.loads(path.read_text(encoding="utf-8"))
     return payload
@@ -159,6 +179,8 @@ def recommend(req: RecommendRequest) -> dict:
         seed_video=req.seed_video, query=req.query, n=req.n,
         mmr_lambda=req.mmr_lambda, exploration_slots=req.exploration_slots,
         max_per_channel=req.max_per_channel,
+        objective_weights=req.objective_weights,
+        intent_alpha_scale=req.intent_alpha_scale,
     ).to_dict()
 
 

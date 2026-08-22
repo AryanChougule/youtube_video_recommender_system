@@ -236,6 +236,17 @@ def generate_catalog(
     # Latent appeal -- only partially observable via engagement rate.
     quality = rng.lognormal(mean=0.0, sigma=0.55, size=n_videos)
 
+    # Latent CLICKBAIT: how much the title/thumbnail oversells the content.
+    #
+    # This exists so that satisfaction genuinely DIVERGES from watch time. A
+    # clickbait video wins the click and holds you for a while (you keep
+    # waiting for the promised payoff) but leaves you feeling cheated. Without
+    # it, "optimise watch time" and "optimise satisfaction" would produce the
+    # same ranking and a multi-objective model would be theatre.
+    #
+    # Beta(1.5, 6) -> most videos are honest, a minority are egregious.
+    clickbait = rng.beta(1.5, 6.0, size=n_videos)
+
     # Publication dates: skewed towards recent (a live catalog keeps growing).
     max_age = 1000
     age_days = (rng.beta(1.6, 2.6, size=n_videos) * max_age).round()
@@ -250,6 +261,7 @@ def generate_catalog(
         * channel_scale[video_channel]
         * topic_pop[dominant]
         * quality
+        * (1.0 + 1.6 * clickbait)          # clickbait wins the click
         * rng.lognormal(0.0, 1.25, size=n_videos)
     )
     accumulation = np.power(np.maximum(age_days, 1.0), 0.72)
@@ -257,7 +269,12 @@ def generate_catalog(
 
     # Engagement rates depend on quality but are noisy -> the ranker can learn
     # a useful-but-imperfect proxy for the hidden appeal.
-    like_rate = np.clip(0.028 * quality * rng.lognormal(0.0, 0.38, n_videos), 0.001, 0.22)
+    # Clickbait depresses the like rate: more people arrive, fewer are pleased.
+    # This is what makes engagement_rate a *partial* tell for clickbait, so the
+    # ranker can learn it but never perfectly.
+    like_rate = np.clip(
+        0.028 * quality * (1.0 - 0.6 * clickbait) * rng.lognormal(0.0, 0.38, n_videos),
+        0.001, 0.22)
     comment_rate = np.clip(0.0022 * quality * rng.lognormal(0.0, 0.55, n_videos), 0.0, 0.05)
     like_count = (view_count * like_rate).astype(np.int64)
     comment_count = (view_count * comment_rate).astype(np.int64)
@@ -330,7 +347,8 @@ def generate_catalog(
             f"catalog coercion dropped rows ({n_videos} -> {len(catalog)}); "
             "ground-truth arrays would misalign"
         )
-    catalog["latent_quality"] = quality      # stripped before serving
+    catalog["latent_quality"] = quality        # stripped before serving
+    catalog["latent_clickbait"] = clickbait    # stripped before serving
 
     channels = pd.DataFrame({
         "channel_id": channel_ids,

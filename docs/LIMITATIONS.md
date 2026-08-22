@@ -34,9 +34,10 @@ would fix.
 
 ### L3 · Offline metrics cannot validate this system
 
-Demonstrated with an oracle control: the true generative model *also* loses to a popularity
-baseline on full-catalog retrieval ([EVALUATION.md](EVALUATION.md)). Users can only click what
-they were shown, so logged data measures the previous policy as much as the new one.
+Demonstrated by contradiction: adding the learned ranker *lowers* full-catalog NDCG (0.0125 →
+0.0107) while *raising* Protocol A top-1 (0.1840 → 0.1930). Two metrics disagreeing about the
+same change means one is wrong for the purpose — and per page, the popularity scorer that looks
+strong on the full-catalog metric lands below random ([EVALUATION.md](EVALUATION.md)).
 
 The counterfactual protocols are better but still not proof. **Only an online A/B test can
 settle whether this system is good**, and nothing here substitutes for that.
@@ -128,7 +129,7 @@ user-facing, and out of scope here.
 
 ### L16 · No fairness or creator-equity constraints
 
-Gini of exposure for the full pipeline is 0.799 — highly concentrated. Multi-stakeholder
+Gini of exposure for the full pipeline is 0.798 — highly concentrated. Multi-stakeholder
 recommendation (balancing viewer utility against creator exposure) is an active research area
 and is not addressed.
 

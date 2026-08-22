@@ -112,7 +112,8 @@ important design decision in the project.
 ### Behavioural model
 
 ```
-feed (logging policy) → examine (cascade) → click → watch → like
+session intent → feed (logging policy) → examine (cascade)
+               → click → watch → like / satisfied / dismissed
 ```
 
 **Users.** Each has a *sparse* persona (2–4 micro-topics — real people watch a few things, and
@@ -138,6 +139,12 @@ duration.
 **Watch fraction.** Beta-distributed around an affinity- and quality-driven mean, penalised by
 video length. This is what makes optimising *watch time* rather than clicks possible.
 
+**Session intent and clickbait.** Two later additions, each made so a hypothesis could be
+TESTED rather than asserted — session intent so an intent detector has something real to detect,
+and a latent clickbait factor so satisfaction genuinely diverges from watch time. Both, with
+their results (one negative, one partial), are in
+[INTENT_AND_OBJECTIVES.md](INTENT_AND_OBJECTIVES.md).
+
 **Feed order is randomised** before display. Without this, position is confounded with
 candidate *source* (popularity picks are assembled first, so autoplay picks would always land
 in the rarely-examined tail). This makes our logs *less* biased than a real production log —
@@ -146,13 +153,13 @@ noted as a limitation.
 ### Output (seed 42)
 
 ```
-3,803 users · 1,099,768 impressions · 116,409 clicks
-CTR 10.6% · 30.6 clicks/user · matrix density 0.51%
-5,983 / 6,000 items clicked at least once (17 genuinely cold items)
-CTR by position: 52.0% → 19.5% → 7.7% → 3.2% → 1.3% → 0.6% → 0.3% → 0.1%
+3,831 users · 1,142,312 impressions · 124,097 clicks
+CTR 10.9% · 32.4 clicks/user · matrix density 0.54%
+27,043 sessions, 45% of them with a focused intent
+73.5% of clicks were satisfying (the multi-objective label)
 ```
 
-Density 0.51% is sparser than MovieLens-100k (6.3%) — deliberately, because YouTube-scale data
+Density 0.54% is sparser than MovieLens-100k (6.3%) — deliberately, because YouTube-scale data
 *is* sparser.
 
 ### Why this is defensible, and where it is not

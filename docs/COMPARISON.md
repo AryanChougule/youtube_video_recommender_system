@@ -66,7 +66,7 @@ evaluator can judge the *recommendations* rather than decode a new layout.
 
 | Dimension | YouTube | ReelRank | Why |
 |---|---|---|---|
-| **Models** | Deep neural nets end-to-end | Matrix factorisation + GBDT | 3,803 users cannot train a deep net. MF is the right capacity for this data size, and the maths is inspectable. |
+| **Models** | Deep neural nets end-to-end | Matrix factorisation + GBDT | 3,831 users cannot train a deep net. MF is the right capacity for this data size, and the maths is inspectable. |
 | **Objectives** | Multi-task (Zhao 2019): watch time, likes, shares, dismissals, survey responses, with a Mixture-of-Experts head and a shallow tower for position bias | Single objective (watch time) | Multi-task needs multiple label streams. I have one. |
 | **Signals** | Audio/video content, thumbnails, ASR transcripts, watch-time curves, subscriptions, survey responses, demographics | Text metadata + simulated watch logs | Availability. |
 | **Explanations** | Minimal ("Recommended for you") | Every item names its recall source, rank, ranker score and policy actions | An evaluation harness has the opposite requirement to a consumer product: it must be legible. |

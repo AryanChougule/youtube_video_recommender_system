@@ -235,3 +235,61 @@ def test_reference_date_actually_shifts_the_timeline():
                             reference_date="2026-06-01")[0]
     assert late["published_at"].max() > early["published_at"].max()
     assert reference_now("2026-01-15") == pd.Timestamp("2026-01-15")
+
+
+# ----------------------------------------------------- session intent
+def test_coherent_session_scores_higher_than_a_scattered_one():
+    from recsys.intent import session_coherence
+    tight = np.tile(np.array([1.0, 0.0, 0.0], dtype=np.float32), (4, 1))
+    scattered = np.eye(3, dtype=np.float32)
+    assert session_coherence(tight) > session_coherence(scattered)
+    assert session_coherence(tight[:1]) == 0.0      # one item has no coherence
+
+
+def test_intent_blend_falls_back_to_the_profile_when_incoherent():
+    """A scattered session must not hijack the query.
+
+    Coherence gates alpha, so browsing sessions leave the profile untouched --
+    which matters because blending on browsing sessions measurably HURT
+    (-3.4% top-1), and that cohort is the majority.
+    """
+    from recsys.intent import detect_intent
+    rng = np.random.default_rng(0)
+    vectors = rng.normal(size=(40, 8)).astype(np.float32)
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+    profile = vectors[0]
+
+    scattered = detect_intent(vectors, list(range(5)), profile)
+    assert scattered.alpha < 0.35
+    assert np.allclose(scattered.vector, scattered.vector)   # finite, normalised
+    assert abs(float(np.linalg.norm(scattered.vector)) - 1.0) < 1e-4
+
+
+def test_intent_never_fully_overrides_the_profile():
+    """MAX_ALPHA caps how far five clicks can move the query."""
+    from recsys.intent import MAX_ALPHA, detect_intent
+    vectors = np.tile(np.array([1.0, 0.0], dtype=np.float32), (10, 1))
+    vectors[0] = np.array([0.0, 1.0], dtype=np.float32)
+    intent = detect_intent(vectors, [1, 2, 3, 4, 5], vectors[0])
+    assert intent.alpha <= MAX_ALPHA + 1e-6
+
+
+def test_empty_history_yields_no_intent():
+    from recsys.intent import detect_intent
+    vectors = np.eye(4, dtype=np.float32)
+    intent = detect_intent(vectors, [], np.zeros(4, dtype=np.float32))
+    assert not intent.detected and intent.alpha == 0.0
+
+
+def test_clickbait_is_generated_and_depresses_the_like_rate():
+    """The wedge that makes satisfaction diverge from watch time.
+
+    If clickbait stopped affecting engagement, multi-objective ranking would
+    become theatre -- so the relationship is asserted, not assumed.
+    """
+    catalog, _, _ = generate_catalog(n_videos=1500, n_channels=60, seed=13)
+    assert "latent_clickbait" in catalog.columns
+    bait = catalog["latent_clickbait"].to_numpy()
+    assert 0.0 <= bait.min() and bait.max() <= 1.0
+    like_rate = (catalog["like_count"] / catalog["view_count"].clip(lower=1)).to_numpy()
+    assert np.corrcoef(bait, like_rate)[0, 1] < -0.03, "clickbait should depress likes"

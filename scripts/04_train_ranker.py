@@ -35,6 +35,7 @@ from recsys.config import Paths, load_config
 from recsys.metrics import within_group_top1
 from recsys.rank.crossfit import build_crossfitted_training_set
 from recsys.rank.dataset import build_training_set
+from recsys.rank.multitask import MultiTaskRanker
 from recsys.rank.ranker import Ranker
 from recsys.split import split_interactions, temporal_split
 
@@ -154,6 +155,22 @@ def main() -> None:
     )
     for name, drop in list(importance.items())[:10]:
         print(f"    {name:<26} {drop:+.4f} {'#' * max(1, int(drop * 400))}")
+
+    # ---- multi-objective heads over the SAME features ----------------
+    if cfg.ranker.multitask and dataset.task_y:
+        print("\n[6] Multi-objective heads (shared features, one head per outcome)")
+        multi = MultiTaskRanker(
+            weights=cfg.ranker.objective_weights,
+            learning_rate=cfg.ranker.learning_rate,
+            max_iter=250, seed=cfg.project.seed,
+        ).fit(
+            dataset.X[train], {k: v[train] for k, v in dataset.task_y.items()},
+            dataset.sample_weight[train],
+            dataset.X[test], {k: v[test] for k, v in dataset.task_y.items()},
+        )
+        joblib.dump(multi, Paths.multitask_ranker, compress=3)
+        print(f"    {Paths.multitask_ranker.relative_to(Paths.root)}  "
+              f"({Paths.multitask_ranker.stat().st_size / 1e6:.1f} MB)")
 
     joblib.dump(ranker, out_path, compress=3)
     report = {

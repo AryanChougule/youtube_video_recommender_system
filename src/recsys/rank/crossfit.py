@@ -122,12 +122,22 @@ def build_crossfitted_training_set(
         groups.append(part.group + offset)
         offset += int(part.group.max()) + 1
 
+    # The multi-task labels must survive the merge, or the multi-objective
+    # heads silently never train -- which is exactly what happened the first
+    # time this ran.
+    task_names = [k for k in (parts[0].task_y or {})]
+    merged_tasks = {
+        name: np.concatenate([p.task_y[name] for p in parts])
+        for name in task_names
+    }
+
     merged = TrainingSet(
         X=np.concatenate([p.X for p in parts]),
         y=np.concatenate([p.y for p in parts]),
         sample_weight=np.concatenate([p.sample_weight for p in parts]),
         group=np.concatenate(groups),
         timestamp=np.concatenate([p.timestamp for p in parts]),
+        task_y=merged_tasks,
         meta={
             "n_rows": int(sum(p.meta["n_rows"] for p in parts)),
             "n_positives": int(sum(p.meta["n_positives"] for p in parts)),

@@ -45,6 +45,7 @@ class Artifacts:
     channel: ChannelRecall
     features: FeatureBuilder
     ranker: Optional[Ranker]
+    multitask: Optional[object]      # MultiTaskRanker, when trained
     index_meta: dict
     data_meta: dict
 
@@ -125,6 +126,10 @@ def load_artifacts(cfg: Config | None = None, with_ranker: bool = True,
             f"missing ranker: {Paths.ranker}\nRun `python scripts/04_train_ranker.py`."
         )
 
+    multitask = None
+    if with_ranker and Paths.multitask_ranker.exists():
+        multitask = joblib.load(Paths.multitask_ranker)
+
     features = FeatureBuilder(
         catalog=catalog, item_stats=item_stats, item_vectors=item_vectors,
         covisitation=covisitation, als=als,
@@ -135,7 +140,7 @@ def load_artifacts(cfg: Config | None = None, with_ranker: bool = True,
         content=ContentRecall(text_index), covisitation=covisitation, als=als,
         trending=TrendingRecall(item_stats, halflife_days=cfg.policy.freshness_halflife_days),
         channel=ChannelRecall(catalog, item_stats),
-        features=features, ranker=ranker,
+        features=features, ranker=ranker, multitask=multitask,
         index_meta=index_meta, data_meta=data_meta,
         video_index={v: i for i, v in enumerate(catalog["video_id"])},
         video_ids=catalog["video_id"].to_numpy(),

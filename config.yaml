@@ -40,6 +40,15 @@ simulator:
   persona_drift: 0.05         # per-session probability of taste shift
   completion_noise: 0.18      # std-dev of watch-fraction noise
   min_interactions_per_user: 5
+  # --- session intent -------------------------------------------------
+  # The difference between what a person LIKES and what they want RIGHT NOW.
+  # Some sessions are focused on one micro-topic, and a quarter of those are
+  # outside the user's persona entirely ("learning RAG for an interview").
+  # A profile-only recommender structurally cannot serve that case.
+  intent_rate: 0.45
+  intent_offpersona_rate: 0.25
+  intent_strength_a: 6.0
+  intent_strength_b: 3.0
 
 # --- Item text representation ---------------------------------------------
 features:
@@ -92,10 +101,28 @@ ranker:
   test_size: 0.2
   learning_rate: 0.08
   max_iter: 350
+  # --- multi-objective ranking ----------------------------------------
+  # Independent calibrated heads over one feature matrix; the value score is
+  # a weighted sum. These weights are an ENGINEERING CHOICE, not YouTube's
+  # (they have never published theirs). They are overridable per request,
+  # which is what powers the Recommendation Lab in the UI.
+  multitask: true
+  objective_weights:
+    click: 0.10
+    long_watch: 0.25
+    completion: 0.15
+    liked: 0.15
+    satisfied: 0.40
+    dismissed: -0.20
 
 # --- Stage 3: re-ranking policy -------------------------------------------
 policy:
-  mmr_lambda: 0.72            # 1.0 = pure relevance, 0.0 = pure diversity
+  mmr_lambda: 0.72
+  # Session-intent blending, 0 = off. Measured NOT to improve ranking: the
+  # profile's recency decay (half-life 8) already behaves as a session model,
+  # so an explicit session vector is redundant. Exposed in the UI so the
+  # negative result is demonstrable. See src/recsys/intent.py.
+  intent_alpha_scale: 0.0            # 1.0 = pure relevance, 0.0 = pure diversity
   max_per_channel: 2
   freshness_halflife_days: 21
   freshness_weight: 0.08

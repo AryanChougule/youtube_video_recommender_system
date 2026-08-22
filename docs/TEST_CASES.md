@@ -5,7 +5,7 @@ prints live system output. Writing them as code rather than prose means they can
 drift from what the system actually does — and the failure cases stay honest, because they are
 re-measured on every run.
 
-Output shown is from a build with seed 42 (6,000 videos, 3,803 simulated users).
+Output shown is from a build with seed 42 (6,000 videos, 3,831 simulated users).
 `*` marks a slot filled by the exploration policy.
 
 ---
@@ -259,15 +259,16 @@ reachable is more honest than one that hides them behind clamped ranges.
 ## F6 · Popularity beats the hybrid on the naive offline metric
 
 ```
-full-catalog NDCG@10:   popularity 0.0178  >  ORACLE 0.0169  >  FULL pipeline 0.0120
+full-catalog NDCG@10:   Stage-1 recall 0.0125  >  popularity 0.0121  >  FULL pipeline 0.0107
+Protocol A top-1:       FULL pipeline  0.1930  >  content 0.1840  >  popularity 0.1323
 ```
 
-❌ On the standard offline protocol, a trivial popularity list wins.
+❌ On the standard offline protocol, adding the learned ranker makes things *worse*, and a
+trivial popularity list beats content-based retrieval.
 
-✅ **But the metric is at fault, not the model** — the oracle built from the simulator's own
-generative parameters *also* loses. Users can only click what the old policy showed them.
-Under the counterfactually-valid protocol the learned ranker leads every genuine model
-(top-1 0.2090 vs 0.1338 for popularity). Full analysis in
+✅ **But the metric is at fault, not the model.** The same ranker that loses on full-catalog
+NDCG wins decisively on both counterfactually-valid protocols, and the popularity scorer that
+looks strong there lands *below random* per page (0.1323 vs 0.1415). Full analysis in
 [EVALUATION.md](EVALUATION.md#finding-2--the-standard-offline-protocol-does-not-measure-the-recommender).
 
 ## F7 · Filter bubble — a single-interest history yields a monoculture
@@ -306,7 +307,7 @@ the single thing I would fix first with more time.
 
 ## Automated coverage
 
-40 tests, `python -m pytest tests/ -q`. The interesting ones are regressions for bugs that
+45 tests, `python -m pytest tests/ -q`. The interesting ones are regressions for bugs that
 actually occurred:
 
 | Test | Guards against |

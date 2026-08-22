@@ -14,6 +14,18 @@ const state = {
   query: null,
   meta: null,
   lastResponse: null,
+  objectives: {},        // task -> weight, live in the Recommendation Lab
+  intentScale: 0,
+};
+
+// Presets for the Recommendation Lab. These are product stances, not tuned
+// optima: "what should this system be FOR?" is a decision, and making it a
+// one-click decision is the point of the panel.
+const OBJECTIVE_PRESETS = {
+  balanced:     null,                       // whatever config.yaml ships
+  engagement:   { click: 1.0, long_watch: 0.3, completion: 0, liked: 0, satisfied: 0, dismissed: 0 },
+  satisfaction: { click: 0, long_watch: 0.15, completion: 0.25, liked: 0.2, satisfied: 1.0, dismissed: -0.4 },
+  discovery:    { click: 0.1, long_watch: 0.2, completion: 0.3, liked: 0.3, satisfied: 0.6, dismissed: -0.2 },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -149,6 +161,39 @@ function renderHistory() {
       renderPersonas(); renderHistory(); refresh();
     });
   });
+}
+
+function renderObjectives() {
+  const weights = state.objectives;
+  const names = Object.keys(weights);
+  if (!names.length) { $('objectives').innerHTML = ''; return; }
+  $('objectives').innerHTML = names.map((k) => `
+    <div class="obj-row ${weights[k] < 0 ? 'negative' : ''}">
+      <label>${esc(k.replace(/_/g, ' '))} <b>${weights[k].toFixed(2)}</b></label>
+      <input type="range" data-obj="${esc(k)}" min="${k === 'dismissed' ? -1 : 0}"
+             max="1" step="0.05" value="${weights[k]}">
+    </div>`).join('');
+  $('objectives').querySelectorAll('input[type=range]').forEach((el) => {
+    el.addEventListener('input', () => {
+      state.objectives[el.dataset.obj] = +el.value;
+      el.parentElement.querySelector('b').textContent = (+el.value).toFixed(2);
+      el.parentElement.classList.toggle('negative', +el.value < 0);
+    });
+    el.addEventListener('change', refresh);
+  });
+}
+
+function renderIntent(res) {
+  const si = (res.diagnostics || {}).session_intent;
+  const box = $('intent-box');
+  if (!si || !si.detected) {
+    box.innerHTML = `<span class="muted">No focused session intent detected
+      &mdash; the feed is driven by the long-term profile.</span>`;
+    return;
+  }
+  box.innerHTML = `&#9673; Current focus: <b>${esc(si.label || 'unnamed')}</b><br>
+    <span class="muted">coherence ${si.coherence} &middot; novelty ${si.novelty}
+    &middot; blend weight applied ${res.diagnostics.intent_applied}</span>`;
 }
 
 function renderDiagnostics(res) {
@@ -334,6 +379,8 @@ async function refresh() {
     max_per_channel: +$('chan').value,
   };
   if (state.query) body.query = state.query;
+  if (Object.keys(state.objectives).length) body.objective_weights = state.objectives;
+  body.intent_alpha_scale = state.intentScale;
 
   try {
     const res = await api('/api/recommend', {
@@ -358,6 +405,7 @@ async function refresh() {
     renderFeed(items, titles[mode] || 'Recommended', '');
     $('feed-sub').innerHTML = sub;
     renderDiagnostics(res);
+    renderIntent(res);
   } catch (err) {
     $('feed').innerHTML = `<div class="loading">Request failed: ${esc(err.message)}</div>`;
   }
@@ -400,6 +448,21 @@ function bindControls() {
     state.query = $('search-input').value.trim() || null;
     refresh();
   });
+  $('intent').addEventListener('input', () => {
+    state.intentScale = +$('intent').value;
+    $('v-intent').textContent = state.intentScale.toFixed(2);
+  });
+  $('intent').addEventListener('change', refresh);
+  document.querySelectorAll('[data-preset]').forEach((el) => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('[data-preset]').forEach((b) => b.classList.remove('active'));
+      el.classList.add('active');
+      const preset = OBJECTIVE_PRESETS[el.dataset.preset];
+      state.objectives = { ...(preset || state.meta.objectives.default_weights) };
+      renderObjectives();
+      refresh();
+    });
+  });
   $('btn-how').addEventListener('click', renderHow);
   ['modal', 'how-modal'].forEach((id) => {
     $(id).addEventListener('click', (ev) => {
@@ -437,6 +500,14 @@ function bindControls() {
     </div>`;
     $('banner-more').addEventListener('click', (e) => { e.preventDefault(); renderHow(); });
 
+    if (meta.objectives && meta.objectives.multitask_trained) {
+      state.objectives = { ...meta.objectives.default_weights };
+      renderObjectives();
+      document.querySelector('[data-preset="balanced"]').classList.add('active');
+    } else {
+      $('objectives').innerHTML =
+        '<div class="empty-note">Multi-objective heads not trained.</div>';
+    }
     renderChips(meta.catalog.categories);
     renderPersonas();
     renderHistory();

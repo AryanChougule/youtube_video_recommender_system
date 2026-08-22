@@ -46,6 +46,7 @@ class Paths:
     # Never exposed through the API: leaking it would make every metric a lie.
     gt_item_topics = processed / "gt_item_topics.npy"
     gt_user_topics = processed / "gt_user_topics.npy"
+    gt_session_intent = processed / "gt_session_intent.parquet"
 
     # build artifacts
     item_vectors = artifacts / "item_vectors.npy"
@@ -55,6 +56,7 @@ class Paths:
     als_user_factors = artifacts / "als_user_factors.npy"
     als_item_factors = artifacts / "als_item_factors.npy"
     ranker = artifacts / "ranker.joblib"
+    multitask_ranker = artifacts / "multitask_ranker.joblib"
     item_stats = artifacts / "item_stats.parquet"
     index_meta = artifacts / "index_meta.json"
     eval_report = artifacts / "evaluation.json"
@@ -110,6 +112,12 @@ class SimulatorCfg(BaseModel):
     persona_drift: float = 0.05
     completion_noise: float = 0.18
     min_interactions_per_user: int = 5
+    # Session intent: the difference between "what this person likes" and
+    # "what they want right now".
+    intent_rate: float = 0.45            # share of sessions with a focused intent
+    intent_offpersona_rate: float = 0.25  # of those, how many are genuinely new
+    intent_strength_a: float = 6.0        # Beta(a, b) -> mean a/(a+b) = 0.67
+    intent_strength_b: float = 3.0
 
 
 class FeaturesCfg(BaseModel):
@@ -154,10 +162,20 @@ class RankerCfg(BaseModel):
     test_size: float = 0.2
     learning_rate: float = 0.08
     max_iter: int = 350
+    multitask: bool = True
+    objective_weights: Dict[str, float] = {
+        "click": 0.10, "long_watch": 0.25, "completion": 0.15,
+        "liked": 0.15, "satisfied": 0.40, "dismissed": -0.20,
+    }
 
 
 class PolicyCfg(BaseModel):
     mmr_lambda: float = 0.72
+    # Session-intent blending. Default 0.0 -- MEASURED not to help, because the
+    # profile's recency decay already acts as a session model. Kept as a knob so
+    # the Recommendation Lab can demonstrate the negative result rather than
+    # hide it. See src/recsys/intent.py.
+    intent_alpha_scale: float = 0.0
     max_per_channel: int = 2
     freshness_halflife_days: float = 21.0
     freshness_weight: float = 0.08

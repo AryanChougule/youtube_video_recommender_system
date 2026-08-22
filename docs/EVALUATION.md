@@ -71,26 +71,41 @@ catalog, report NDCG. Run it and you get this:
 
 | Full-catalog retrieval | NDCG@10 | recall@20 |
 |---|---|---|
-| **popularity** | **0.0178** | 0.0342 |
-| CF — ALS only | 0.0176 | 0.0256 |
-| hybrid recall only | 0.0167 | 0.0277 |
-| FULL pipeline | 0.0120 | 0.0250 |
-| content only | 0.0108 | 0.0240 |
-| random | 0.0015 | 0.0036 |
+| **ORACLE** (true generative parameters) | **0.0161** | — |
+| hybrid recall only (Stage 1) | 0.0125 | 0.0222 |
+| popularity | 0.0121 | 0.0267 |
+| CF — ALS only | 0.0119 | 0.0198 |
+| FULL pipeline (Stage 1+2+3) | 0.0107 | 0.0191 |
+| content only | 0.0090 | 0.0167 |
+| random | 0.0010 | 0.0022 |
 
-A trivial popularity list beats everything. The tempting conclusion is that the recommender is
-broken. Before accepting it, we built a control that only a simulator makes possible:
+Two things are wrong here, and they are different problems.
 
-> **Score an ORACLE** — the exact generative model that produced the data, using the true user
-> personas, the true hidden video quality, and the true duration preferences.
+**First, the metric is popularity-dominated.** A trivial popularity list (0.0121) beats
+content-based retrieval (0.0090) and matches ALS. Users can only click what the logging policy
+showed them, and that policy was popularity-heavy, so reproducing it scores well.
 
-| | NDCG@10 |
-|---|---|
-| popularity | 0.0178 |
-| **ORACLE (true generative parameters)** | **0.0169** |
+**Second — and this is the decisive evidence — adding the learned ranker moves the two families
+of metric in OPPOSITE directions:**
 
-**The data-generating process itself loses to a popularity list.** If the true model cannot win,
-the metric is not measuring model quality.
+| | full-catalog NDCG@10 | Protocol A top-1 |
+|---|---|---|
+| Stage 1 recall only | **0.0125** | 0.1840 † |
+| + learned ranker | 0.0107 ↓ | **0.1930** ↑ |
+
+† *content-only, the strongest single Stage-1 signal.*
+
+Two metrics disagreeing about the same change means one of them is wrong **for this purpose**.
+Full-catalog NDCG rewards casting a wide net over the catalog; Protocol A measures whether the
+right video went on top of a page the user actually saw. Only the second is the product question.
+
+The **oracle** scores 0.0161 — above everything else — so the metric is not pure noise, and
+there is genuine headroom our models do not capture. But it is not measuring what we are trying
+to improve.
+
+> On an earlier build (before latent clickbait entered the generator) the oracle scored *below*
+> the popularity baseline outright — an even starker version of the same point. Both builds
+> agree on the conclusion; these are the numbers that reproduce today.
 
 ### Why
 
@@ -121,20 +136,24 @@ have put the right video on top?* — and is the offline protocol that best pred
 
 | Scorer | top-1 | NDCG | MRR |
 |---|---|---|---|
-| `[ref]` shown position † | 0.7365 | 0.8920 | 0.8549 |
-| **LEARNED RANKER (19 features)** | **0.2090** | **0.5707** | **0.4366** |
-| content only | 0.2025 | 0.5671 | 0.4320 |
-| CF — ALS only | 0.1755 | 0.5400 | 0.3982 |
-| CF — co-visitation only | 0.1375 | 0.4943 | 0.3419 |
-| popularity | 0.1338 | 0.4963 | 0.3438 |
-| random | 0.1305 | 0.4933 | 0.3400 |
+| `[ref]` shown position † | 0.7713 | 0.9086 | 0.8768 |
+| **LEARNED RANKER (19 features)** | **0.1930** | **0.5562** | **0.4183** |
+| content only | 0.1840 | 0.5514 | 0.4119 |
+| CF — ALS only | 0.1622 | 0.5259 | 0.3804 |
+| random | 0.1415 | 0.5018 | 0.3507 |
+| popularity | 0.1323 | 0.4949 | 0.3417 |
+| CF — co-visitation only | 0.1280 | 0.4928 | 0.3392 |
+
+Note that **popularity and co-visitation now score below random**. Per page, "show the globally
+popular thing" is actively worse than chance — the exact opposite of what the full-catalog
+metric concluded about the same scorer.
 
 † **Not a competing model.** Under a cascade click model, position *causes* the click — a scorer
 that knows the slot has access to the label's mechanism. This row measures the size of position
 bias (the ceiling on what re-ranking could ever be worth), not video quality. Comparing a
 content model against it would be a category error.
 
-The hybrid ranker leads every genuine model, and is 1.60× random.
+The hybrid ranker leads every genuine model, and is 1.36× random.
 
 ### Protocol B — 1 positive vs 100 sampled negatives
 
@@ -142,12 +161,12 @@ Isolates pure ranking ability from the "find the needle the old policy hid" retr
 
 | Scorer | HR@10 | NDCG@10 | mean rank |
 |---|---|---|---|
-| content only | **0.4753** | 0.2389 | 23.85 |
-| **LEARNED RANKER** | 0.4679 | **0.2410** | **21.34** |
-| CF — ALS only | 0.3384 | 0.1748 | 33.05 |
-| popularity | 0.2608 | 0.1429 | 36.96 |
-| CF — co-visitation only | 0.1455 | 0.0798 | 48.21 |
-| random | 0.0926 | 0.0433 | 51.29 |
+| content only | **0.3703** | **0.1821** | 30.91 |
+| **LEARNED RANKER** | 0.3567 | 0.1776 | **28.49** |
+| CF — ALS only | 0.2792 | 0.1484 | 37.24 |
+| popularity | 0.2665 | 0.1484 | 36.29 |
+| CF — co-visitation only | 0.1428 | 0.0758 | 48.75 |
+| random | 0.0999 | 0.0450 | 51.27 |
 
 Sampled metrics have their own documented bias — they systematically flatter weaker models
 ([Krichene & Rendle, KDD 2020](https://dl.acm.org/doi/10.1145/3394486.3403226)) — which is
@@ -163,20 +182,20 @@ Accuracy alone will happily reward a system that shows everyone the same 20 vira
 
 | Strategy | coverage | Gini | novelty (bits) | intra-list diversity |
 |---|---|---|---|---|
-| random | 0.994 | 0.249 | 12.86 | 0.946 |
-| popularity | **0.005** | **0.997** | 9.17 | 0.938 |
-| trending | 0.003 | 0.997 | 16.60 | 0.948 |
-| content only | 0.878 | 0.526 | 12.77 | **0.533** |
-| CF — ALS only | 0.563 | 0.767 | 11.30 | 0.847 |
-| hybrid recall only | 0.735 | 0.665 | 11.74 | 0.711 |
-| **FULL pipeline** | 0.571 | 0.799 | 11.97 | 0.717 |
+| random | 0.994 | 0.250 | 12.84 | 0.945 |
+| popularity | **0.004** | **0.997** | 9.69 | 0.863 |
+| trending | 0.003 | 0.997 | 16.68 | 0.953 |
+| content only | 0.890 | 0.509 | 12.78 | **0.536** |
+| CF — ALS only | 0.572 | 0.764 | 11.41 | 0.855 |
+| hybrid recall only | 0.756 | 0.645 | 11.84 | 0.721 |
+| **FULL pipeline** | 0.564 | 0.798 | 12.04 | 0.718 |
 
 Two things this table shows that NDCG cannot:
 
 - **The popularity baseline is a terrible product.** 0.5% catalog coverage, Gini 0.997 — it
   shows essentially the same 30 videos to every user forever. It "wins" on the biased accuracy
   metric while being useless.
-- **Content-only has the worst intra-list diversity (0.533)** — the filter-bubble signature. It
+- **Content-only has the worst intra-list diversity (0.536)** — the filter-bubble signature. It
   retrieves accurately and repetitively.
 
 ### Definitions
@@ -199,17 +218,15 @@ production.
 
 | MMR λ | NDCG@10 | coverage | intra-list diversity |
 |---|---|---|---|
-| 0.50 | 0.0122 | 0.436 | 0.749 |
-| **0.72** | 0.0120 | 0.401 | 0.717 |
-| 0.90 | 0.0126 | 0.380 | 0.695 |
-| 1.00 | **0.0135** | 0.377 | 0.681 |
+| 0.50 | 0.0102 | 0.438 | 0.749 |
+| **0.72** | **0.0107** | 0.398 | 0.718 |
+| 0.90 | 0.0103 | 0.368 | 0.700 |
+| 1.00 | 0.0099 | 0.365 | 0.688 |
 
-Accuracy varies by ~11% across the whole λ range while coverage moves by 16% and diversity by
-10%. λ = 1.0 does edge the others on NDCG here — but on the **biased** full-catalog metric,
-which Finding 2 shows is not a safe basis for a decision. Given that, shipping λ = 0.72 buys a
-visibly less repetitive page for an accuracy difference that this protocol cannot reliably
-measure. It is a judgement call, and it is exposed as a live slider in the UI for exactly that
-reason.
+The shipped λ = 0.72 happens to top this sweep, but the spread (0.0099–0.0107) is small and the
+metric is the biased one, so this is not the reason to ship it. The reason is that coverage moves
+20% and intra-list diversity 9% across the range: **diversity here is close to free**. It remains
+a judgement call, which is why it is a live slider in the UI.
 
 ---
 
@@ -235,5 +252,5 @@ python scripts/05_evaluate.py --users 1500    # full evaluation → artifacts/ev
 python scripts/06_validate_on_movielens.py    # real-data validation of the algorithms
 python scripts/08_diagnose_ranker.py          # oracle ceiling analysis
 python scripts/07_ablate_text_fields.py       # text-field ablation
-python -m pytest tests/ -q                    # 40 tests
+python -m pytest tests/ -q                    # 45 tests
 ```

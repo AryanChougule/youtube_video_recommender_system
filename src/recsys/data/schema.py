@@ -49,6 +49,11 @@ INTERACTION_SCHEMA: dict[str, str] = {
     "watch_fraction": "float64", # fraction of the video actually watched
     "watch_seconds": "float64",
     "liked": "int64",
+    # Multi-objective labels. `satisfied` is deliberately NOT a function of
+    # watch time alone -- clickbait produces long watches and low satisfaction,
+    # which is the whole reason a multi-task ranker is worth building.
+    "satisfied": "int64",
+    "dismissed": "int64",
 }
 
 

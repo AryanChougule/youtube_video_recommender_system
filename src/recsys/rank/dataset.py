@@ -44,6 +44,23 @@ import pandas as pd
 from .features import FEATURE_NAMES, FeatureBuilder
 
 
+#: Multi-task heads. Each is a BINARY label over the same rows and the same
+#: feature matrix, so one pass builds them all and each head's output stays a
+#: calibrated probability that can be combined with meaningful weights.
+#:
+#: They are deliberately nested (a completion implies a long watch implies a
+#: click), which is what lets the value score express "a click is worth
+#: something, a long watch more, a satisfying watch most".
+TASK_LABELS: dict[str, str] = {
+    "click": "clicked",
+    "long_watch": "watch_fraction >= 0.5",
+    "completion": "watch_fraction >= 0.9",
+    "liked": "liked",
+    "satisfied": "satisfied",
+    "dismissed": "dismissed",
+}
+
+
 @dataclass
 class TrainingSet:
     X: np.ndarray
@@ -52,6 +69,8 @@ class TrainingSet:
     group: np.ndarray          # feed id, for grouped/listwise evaluation
     timestamp: np.ndarray      # for temporal splitting
     meta: dict
+    #: name -> binary label vector, aligned with X. Empty for older callers.
+    task_y: dict = None
 
 
 def build_training_set(
@@ -83,6 +102,12 @@ def build_training_set(
     rank_shown = df["rank_shown"].to_numpy(dtype=np.float64)
     watch_seconds = df["watch_seconds"].to_numpy(dtype=np.float64)
     watch_fraction = df["watch_fraction"].to_numpy(dtype=np.float64)
+    liked_arr = (df["liked"].to_numpy(dtype=np.int8) if "liked" in df.columns
+                 else np.zeros(len(df), dtype=np.int8))
+    satisfied_arr = (df["satisfied"].to_numpy(dtype=np.int8) if "satisfied" in df.columns
+                     else np.zeros(len(df), dtype=np.int8))
+    dismissed_arr = (df["dismissed"].to_numpy(dtype=np.int8) if "dismissed" in df.columns
+                     else np.zeros(len(df), dtype=np.int8))
 
     # A feed is a maximal run sharing (user, timestamp).
     new_feed = np.empty(len(df), dtype=bool)
@@ -95,6 +120,7 @@ def build_training_set(
     n_catalog = len(video_ids)
 
     X_parts, y_parts, w_parts, g_parts, t_parts = [], [], [], [], []
+    task_parts: dict[str, list[np.ndarray]] = {k: [] for k in TASK_LABELS}
     history: list[int] = []
     weights: list[float] = []
     current_user = -1
@@ -165,6 +191,25 @@ def build_training_set(
                 else:
                     base = np.ones(len(all_items), dtype=np.float64)
 
+                # Multi-task labels for the same rows. Random negatives were
+                # never shown, so every outcome label is 0 for them -- which is
+                # correct: an item nobody saw produced no watch, like or
+                # satisfaction.
+                pad = np.zeros(len(random_items), dtype=np.float64)
+                clicked_sel = clicked[selected].astype(np.float64)
+                wf_sel = watch_fraction[selected]
+                task_parts["click"].append(np.concatenate([clicked_sel, pad]))
+                task_parts["long_watch"].append(np.concatenate([
+                    ((clicked_sel > 0) & (wf_sel >= 0.5)).astype(np.float64), pad]))
+                task_parts["completion"].append(np.concatenate([
+                    ((clicked_sel > 0) & (wf_sel >= 0.9)).astype(np.float64), pad]))
+                task_parts["liked"].append(np.concatenate([
+                    liked_arr[selected].astype(np.float64), pad]))
+                task_parts["satisfied"].append(np.concatenate([
+                    satisfied_arr[selected].astype(np.float64), pad]))
+                task_parts["dismissed"].append(np.concatenate([
+                    dismissed_arr[selected].astype(np.float64), pad]))
+
                 w_parts.append((base * ips).astype(np.float32))
                 g_parts.append(np.full(len(all_items), feed_id, dtype=np.int64))
                 t_parts.append(np.concatenate([
@@ -203,4 +248,9 @@ def build_training_set(
         print(f"  [rank] training set: {meta['n_rows']:,} rows, "
               f"{meta['n_positives']:,} positives ({meta['positive_rate']:.1%}), "
               f"{meta['n_feeds']:,} feeds")
-    return TrainingSet(X=X, y=y, sample_weight=w, group=g, timestamp=t, meta=meta)
+    task_y = {k: np.concatenate(v).astype(np.int8) for k, v in task_parts.items() if v}
+    if verbose and task_y:
+        rates = "  ".join(f"{k}={task_y[k].mean():.1%}" for k in TASK_LABELS if k in task_y)
+        print(f"  [rank] task positive rates: {rates}")
+    return TrainingSet(X=X, y=y, sample_weight=w, group=g, timestamp=t, meta=meta,
+                       task_y=task_y)

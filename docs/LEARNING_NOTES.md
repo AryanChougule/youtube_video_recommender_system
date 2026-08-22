@@ -359,16 +359,20 @@ baseline reaches 0.5% coverage with Gini 0.997 while "winning" on NDCG.
 
 ### The most important lesson in this whole course
 
-The standard offline protocol **measures the logging policy, not the recommender**. We proved it
-by scoring an oracle built from the simulator's own generative parameters:
+The standard offline protocol **measures the logging policy and retrieval breadth, not ranking
+quality**. The decisive evidence: adding the learned ranker moves two metric families in
+opposite directions.
 
 ```
-popularity   NDCG@10 = 0.0178
-ORACLE       NDCG@10 = 0.0169   ← the data-generating process LOSES
+                        full-catalog NDCG@10    Protocol A top-1
+Stage 1 recall only            0.0125               0.1840
++ learned ranker               0.0107  ↓            0.1930  ↑
 ```
 
-If the true model can't win, the metric isn't measuring model quality. Users can only click what
-they were shown.
+Two metrics disagreeing about the same change means one is wrong for the purpose. And per page,
+the popularity scorer lands *below random* (0.1323 vs 0.1415) while scoring near the top on the
+full-catalog metric — opposite verdicts on the identical scorer. Users can only click what they
+were shown.
 
 **Two protocols that survive this:**
 - **A · Re-rank logged impressions** — only reorder what was actually shown; every label

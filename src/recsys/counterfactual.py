@@ -12,15 +12,27 @@ popularity ranker scores well by reproducing the old policy. A genuinely better
 recommender is *penalised* for surfacing something the user never got the
 chance to click.
 
-We proved this rather than asserting it. Scoring an ORACLE -- the exact
-generative model that produced the data, with true user personas and true
-hidden video quality -- on full-catalog retrieval:
+The decisive evidence is that adding the learned ranker moves the two families
+of metric in OPPOSITE directions:
 
-    popularity   NDCG@10 = 0.0178
-    ORACLE       NDCG@10 = 0.0169     <- the data-generating process LOSES
+                            full-catalog NDCG@10    Protocol A top-1
+    Stage 1 recall only            0.0125               0.1840
+    + learned ranker               0.0107  (down)       0.1930  (up)
 
-If the true model cannot win, the metric is not measuring model quality. Any
-conclusion drawn from full-catalog NDCG on logged data is unsafe.
+Two metrics disagreeing about the same change means one of them is wrong for
+the purpose. Full-catalog NDCG rewards casting a wide net; Protocol A asks
+whether the right video went on top of a page the user actually saw.
+
+The metric is also plainly popularity-dominated: a trivial popularity list
+scores 0.0121, beating content-based retrieval at 0.0090. And per PAGE that
+same popularity scorer lands BELOW random (0.1323 vs 0.1415) -- the exact
+opposite verdict on the identical scorer.
+
+An ORACLE built from the simulator's true generative parameters scores 0.0161,
+so the metric is not pure noise; there is real headroom. But it is not
+measuring what we are trying to improve. (On an earlier build, before latent
+clickbait entered the generator, the oracle scored BELOW popularity outright --
+a starker version of the same point.)
 
 Two protocols that are safe
 ---------------------------
@@ -62,6 +74,7 @@ class TestFeed:
     labels: np.ndarray           # 1 for the clicked item
     gains: np.ndarray            # watch fraction (graded relevance)
     logged_ranks: np.ndarray     # the position the old policy assigned
+    session_id: str = ""         # lets an analysis join to ground truth
 
 
 def replay_test_feeds(
@@ -84,6 +97,7 @@ def replay_test_feeds(
     clicked = df["clicked"].to_numpy(dtype=np.int8)
     rank_shown = df["rank_shown"].to_numpy(dtype=np.int64)
     watch_fraction = df["watch_fraction"].to_numpy(dtype=np.float64)
+    session_ids = df["session_id"].to_numpy()
 
     new_feed = np.empty(len(df), dtype=bool)
     new_feed[0] = True
@@ -110,6 +124,7 @@ def replay_test_feeds(
                 history=list(history), weights=list(weights),
                 items=item[block].copy(), labels=clicked[block].astype(int).copy(),
                 gains=watch_fraction[block].copy(), logged_ranks=rank_shown[block].copy(),
+                session_id=str(session_ids[start]),
             ))
 
         for row in range(start, stop):

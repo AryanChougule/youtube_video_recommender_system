@@ -256,3 +256,24 @@ pre.json {
   .main { padding: 16px; }
   .search-wrap { max-width: none; }
 }
+
+
+/* ---------------- recommendation lab ---------------- */
+.intent-box {
+  background: rgba(179,136,255,.08); border: 1px solid #4a3a6b;
+  border-radius: 8px; padding: 8px 10px; font-size: 11.5px;
+  color: var(--purple); margin-bottom: 10px; line-height: 1.4;
+}
+.intent-box b { color: #d6c2ff; }
+.intent-box .muted { color: var(--text-dimmer); }
+.preset-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.btn-sm { padding: 4px 9px; font-size: 11.5px; border-radius: 12px; }
+.btn-sm.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.obj-row { margin-bottom: 8px; }
+.obj-row label {
+  display: flex; justify-content: space-between; font-size: 11.5px;
+  color: var(--text-dim); margin-bottom: 3px;
+}
+.obj-row label b { color: var(--text); font-variant-numeric: tabular-nums; }
+.obj-row input[type=range] { width: 100%; }
+.obj-row.negative label b { color: #ff8a80; }
