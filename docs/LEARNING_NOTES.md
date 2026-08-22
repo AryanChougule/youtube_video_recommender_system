@@ -265,7 +265,7 @@ a much easier and less useful task. **Use both.**
 
 ### Position bias
 
-Our logs: 34% CTR at rank 0, 0.14% at rank 7. That is not a statement about the videos.
+Our logs: 52% CTR at rank 0, 0.1% at rank 7. That is not a statement about the videos.
 **Inverse Propensity Scoring**: weight clicks by $1/P(\text{examined at }r)$. A click at rank 6
 is much stronger evidence than one at rank 0.
 
@@ -363,8 +363,8 @@ The standard offline protocol **measures the logging policy, not the recommender
 by scoring an oracle built from the simulator's own generative parameters:
 
 ```
-popularity   NDCG@10 = 0.0218
-ORACLE       NDCG@10 = 0.0198   ← the data-generating process LOSES
+popularity   NDCG@10 = 0.0178
+ORACLE       NDCG@10 = 0.0169   ← the data-generating process LOSES
 ```
 
 If the true model can't win, the metric isn't measuring model quality. Users can only click what

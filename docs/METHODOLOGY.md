@@ -61,7 +61,7 @@ $\alpha = 0.5$ recovers cosine exactly; higher punishes popular items harder. Ma
 config knob rather than a hidden constant is deliberate — it is the popularity/relevance dial.
 
 **Rejected:** Jaccard (harsher but no tunable), PMI (surfaces niche pairs but is noisy at our
-density — 12,284 surviving pairs after `min_cooccurrence=2`).
+density — 12,026 surviving pairs after `min_cooccurrence=2`).
 
 ### 1.3 Implicit-feedback ALS — Hu, Koren & Volinsky (2008)
 
@@ -152,7 +152,7 @@ model to separate "plausible" from "arbitrary", a far easier and far less useful
 
 ### 2.3 Position bias — Inverse Propensity Scoring
 
-Our logs show 34% CTR at rank 0 and 0.14% at rank 7. **That is not a statement about the
+Our logs show 52% CTR at rank 0 and 0.1% at rank 7. **That is not a statement about the
 videos.** Train naively and the model learns "things at the top get clicked", which is circular.
 
 $$w_{\text{IPS}}(r) = \frac{1}{\max(\gamma^{\,r},\ \epsilon)}, \qquad \gamma = 0.82$$

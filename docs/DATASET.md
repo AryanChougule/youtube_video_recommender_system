@@ -77,9 +77,9 @@ that make recommendation *hard*.
 Measured output (seed 42, 6,000 videos, 418 channels):
 
 ```
-views      p50 71,907   p90 692,504   p99 4,538,286   max 90,168,124
-           top 1% of videos hold 27.8% of all views
-duration   median 14.3 min, 7.7% Shorts (≤75s)
+views      p50 69,256   p90 730,511   p99 5,086,542   max 73,396,968
+           top 1% of videos hold 31.7% of all views
+duration   median 14.9 min, 7.7% Shorts (≤75s)
 like rate  median 2.8%
 ```
 
@@ -146,10 +146,10 @@ noted as a limitation.
 ### Output (seed 42)
 
 ```
-3,799 users · 1,099,432 impressions · 116,456 clicks
-CTR 10.6% · 30.7 clicks/user · matrix density 0.51%
-5,985 / 6,000 items clicked at least once (15 genuinely cold items)
-CTR by position: 34.5% → 18.5% → 10.5% → 9.0% → 2.4% → 1.1% → 0.4% → 0.1%
+3,803 users · 1,099,768 impressions · 116,409 clicks
+CTR 10.6% · 30.6 clicks/user · matrix density 0.51%
+5,983 / 6,000 items clicked at least once (17 genuinely cold items)
+CTR by position: 52.0% → 19.5% → 7.7% → 3.2% → 1.3% → 0.6% → 0.3% → 0.1%
 ```
 
 Density 0.51% is sparser than MovieLens-100k (6.3%) — deliberately, because YouTube-scale data

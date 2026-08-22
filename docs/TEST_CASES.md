@@ -5,7 +5,7 @@ prints live system output. Writing them as code rather than prose means they can
 drift from what the system actually does — and the failure cases stay honest, because they are
 re-measured on every run.
 
-Output shown is from a build with seed 42 (6,000 videos, 3,799 simulated users).
+Output shown is from a build with seed 42 (6,000 videos, 3,803 simulated users).
 `*` marks a slot filled by the exploration policy.
 
 ---
@@ -17,15 +17,16 @@ Output shown is from a build with seed 42 (6,000 videos, 3,799 simulated users).
 **Expected:** trending/popular mix, high category diversity, no personalisation claimed.
 
 ```
- 1. [Food                ] How Pastry Completely Changed My Meal Prep     Trending in Food
- 2. [Education           ] Dark Matter on a Budget: 12 Ideas That Work    Trending in Education
- 3. [Tech Reviews        ] Case Airflow vs First Impressions              Trending in Tech Reviews
- 4. [Science & Technology] I Tried Inference Cost for 3 Days              Trending in Science & Technology
- 5.*[Food                ] Pastry, Explained Simply                       Something different
- 7. [Gaming              ] Base Building in 2025: Is It Still Worth It?   Trending in Gaming
- 8. [Health & Fitness    ] Hypertrophy, Explained Simply                  Trending in Health & Fitness
+ 1. [Gaming              ] Stop Getting Tournament Wrong                 Trending in Gaming
+ 2. [Autos & Vehicles    ] Real Range Test, Explained Simply             Trending in Autos & Vehicles
+ 3. [Education           ] The Full Neuroscience Walkthrough             Trending in Education
+ 4. [Science & Technology] I Tried Inference Cost for 3 Days             Trending in Science & Technology
+ 5.*[Science & Technology] The Only Training Dataset Guide You Will Need Something different
+ 6.*[Tech Reviews        ] I Tried Long-term Review for 10 Days          Something different
+ 7. [Howto & Style       ] Joinery vs One Bag: Which One Actually Wins?  Trending in Howto & Style
+ 8. [Entertainment       ] A Beginner Guide to Colour Grade              Trending in Entertainment
 
-mix = 6 categories across 8 slots · diversity 0.926 · 7 distinct channels · 6.4 ms
+mix = 7 categories across 8 slots · diversity 0.954 · 8 distinct channels · 5.3 ms
 ```
 
 ✅ No history, no crash, no fake personalisation. The explanations correctly say *"Trending in X"*
@@ -36,14 +37,15 @@ rather than pretending to know the user.
 **Expected:** strong, correct personalisation towards the stated interest.
 
 ```
- 1. [Gaming] Skill Tree: Everything You Actually Need to Know   Because you watched "Stop Getting Route Optimisation Wrong"
- 2. [Gaming] How Endgame Build Completely Changed My…           Viewers with a taste profile like yours watch this
- 3. [Gaming] How Patch Notes Completely Changed My Auto B…      Because you watched "How to Master Reroll Guide in 3 Minutes"
+ 1. [Gaming] I Tried World Record for 30 Days             Because you watched "Stop Getting Route Optimisation Wrong"
+ 2. [Gaming] Crafting Recipe vs Case Airflow              Viewers with a taste profile like yours watch this
+ 3. [Gaming] My Complete Route Optimisation Setup (2026)  Because you watched "Stop Getting Route Optimisation Wrong"
+ 5. [Gaming] Endgame Build Tier List (2024)               People who watched "How Sequence Break…" also watched this
 
-Gaming share = 100%   (cold-start share was 17%)   ·   11 distinct channels
+Gaming share = 100%   (cold-start share was 8%)   ·   10 distinct channels
 ```
 
-✅ Personalisation is unambiguous: 17% → 100% Gaming. Explanations name the specific video that
+✅ Personalisation is unambiguous: 8% → 100% Gaming. Explanations name the specific video that
 caused each recommendation.
 ⚠️ **100% is too much** — see **F7**, where this same result is analysed as a failure.
 
@@ -52,24 +54,30 @@ caused each recommendation.
 **Expected:** both interests represented, roughly in proportion to the history.
 
 ```
- 1. [Food        ] Pastry vs Meal Prep: Which One Actually Wins   People who watched "How Pastry Completely Changed…" also watched this
- 2. [Gaming      ] I Tried Reset Grind for 100 Days               Because you watched "Stop Getting Route Optimisation Wrong"
- 3. [Tech Reviews] Unboxing on a Budget: 3 Ideas That Work        People who watched "Stop Getting Route Optimisation Wrong" also watched this
- 6. [Food        ] The Only Sourdough Starter Guide…              People who watched "The Full Hole in the Wall Walkthrough" also watched this
+ 1. [Food  ] 10 Laminated Dough Mistakes You Are Making   More from "NoahAppetite"
+ 2. [Gaming] Building Leaderboard Completely From Scratch Because you watched "Stop Getting Tournament Wrong"
+ 3. [Food  ] The Truth About Brown Butter                 Because you watched "Hawker Stall: Ranked From Worst to Best"
+ 4. [Gaming] A Beginner Guide to GPU                      People who watched "I Tried Draft Phase for 12 Days…" also watched this
+ 7.*[Food  ] Local Eats, Explained Simply                 Something different
 
-mix = {Food: 7, Gaming: 4, Tech Reviews: 1}  →  Food 58% / Gaming 33%  ·  diversity 0.866
+mix = {Food: 4, Gaming: 8}  →  Food 33% / Gaming 67%  ·  diversity 0.839
 ```
 
-✅ Both interests survive, roughly proportional to a 50/50 history (recency weighting tilts it).
-Note slot 3: **Tech Reviews appeared from a Food+Gaming history**, via co-visitation — the
-cross-category bridge working in the wild.
+✅ Both interests survive — but Gaming takes 2:1, not the 50/50 of the history. Recency
+weighting is the cause: the Gaming videos were watched more recently and the profile decays with
+a half-life of 8 positions. Intended behaviour, though a 2:1 tilt from a 1:1 history is stronger
+than ideal.
+
+Note slot 4: **"A Beginner Guide to GPU" surfaced by co-visitation** — the `pc_hardware`
+micro-topic bridging the two interests, which is exactly what the latent design is for.
 
 ## S4 · Semantic search — *"sourdough bread baking at home"*
 
 ```
- 1. [Food] How Laminated Dough Completely Changed My Buttercream    Matches your search in Food
- 2. [Food] Proofing: Everything You Actually Need to Know           Matches your search in Food
- 3. [Food] How Open Crumb Completely Changed My Weeknight Dinner    Matches your search in Food
+ 1. [Food] The Truth About Brown Butter                          Matches your search in Food
+ 2. [Food] Proofing: Everything You Actually Need to Know        Matches your search in Food
+ 3. [Food] How Open Crumb Completely Changed My Weeknight Dinner Matches your search in Food
+ 6. [Food] My Complete Pastry Setup (2026)                       Matches your search in Food
 ```
 
 ✅ None of the top hits contain the word "sourdough". LSA maps *laminated dough*, *proofing*
@@ -81,11 +89,11 @@ exists to solve.
 **Seed:** *A Beginner Guide to Fundraising* (Finance)
 
 ```
- 1. [Finance] The Full Earnings Call Walkthrough        Similar to "A Beginner Guide to Fundraising"
- 2. [Finance] How Dividend Yield Completely Changed…    Similar to "A Beginner Guide to Fundraising"
- 3. [Finance] My Complete Dividend Yield Setup (2024)   Similar to "A Beginner Guide to Fundraising"
+ 1. [Finance] My Complete Bootstrapped Setup (2025)   Watched by the same viewers as "A Beginner Guide to Fundraising"
+ 2. [Finance] The Full Earnings Call Walkthrough      Similar to "A Beginner Guide to Fundraising"
+ 3. [Finance] 20 Valuation Mistakes You Are Making    Similar to "A Beginner Guide to Fundraising"
 
-mix = {Finance: 6}   ·   seed excluded   ·   11.8 ms
+mix = {Finance: 6}   ·   seed excluded   ·   ~12 ms
 ```
 
 ✅ Coherent rail, seed excluded, explanations reference the seed rather than a user profile.
@@ -111,12 +119,13 @@ becoming a single-creator page. Two policies pulling in opposite directions, bot
 ## S7 · Diversity control is real, not decorative
 
 ```
-λ = 1.0   diversity 0.681   categories 1   mix {Food: 16}
-λ = 0.3   diversity 0.900   categories 9   mix {Food: 8, Education: 1, Sci&Tech: 1, Gaming: 1,
-                                                Howto: 1, Travel: 1, Tech: 1, Finance: 1, Ent: 1}
+λ = 1.0   diversity 0.729   categories  1   mix {Food: 16}
+λ = 0.3   diversity 0.933   categories 10   mix {Food: 7, Gaming: 1, Education: 1, Sci&Tech: 1,
+                                                 Sports: 1, Health: 1, Ent: 1, Music: 1,
+                                                 Tech: 1, Finance: 1}
 ```
 
-✅ One slider moves the page from a monoculture to 9 categories. The UI exposes this live.
+✅ One slider moves the page from a monoculture to 10 categories. The UI exposes this live.
 
 ## S8 · Cross-category bridge — the payoff of latent micro-topics
 
@@ -131,7 +140,7 @@ ALS neighbours of "RTX 5080 Tier List (2025)":
     [Sports ] Patch Notes: Everything You Actually Need to Know      ← crossed
     [Gaming ] We Tested Thermal Paste So You Do Not Have To
 
-ALS      top-20 cross-category rate: 20%
+ALS      top-20 cross-category rate: 60%
 content  top-20 cross-category rate: 25%
 ```
 
@@ -142,7 +151,7 @@ content  top-20 cross-category rate: 25%
 ```
 
 ⚠️ **Mixed result, reported honestly.** The latent bridge is genuinely discoverable — ALS
-crosses categories 20% of the time here, and the recall layer surfaces it. But the ranker plus
+crosses categories 60% of the time for this seed, and the recall layer surfaces it. But the ranker plus
 the exploration relevance floor filter those candidates out before they reach the page. The
 mechanism is identical to **F7**. Fixing one fixes both.
 
@@ -156,8 +165,8 @@ not understand.
 ## F1 · Cold **items** — the structural hole in collaborative filtering
 
 ```
-   15 / 6000 videos have ZERO clicks
- 2282 / 6000 videos have NO co-visitation neighbours   (38% of the catalog)
+   17 / 6000 videos have ZERO clicks
+ 2327 / 6000 videos have NO co-visitation neighbours   (39% of the catalog)
 
 probe: "Infinity: Everything You Actually Need to Know"
     co-visitation neighbours : 0
@@ -183,8 +192,7 @@ the proper fix (content-conditioned item towers).
 Watched: *Cheap Flights: Ranked From Worst to Best*
 
 ```
- 8 / 8 slots are Travel · diversity 0.418 (the lowest of any scenario)
- 4 of 8 explanations are literally the same anchor video
+ 62% of slots are Travel · nearly every explanation cites the SAME anchor video
 ```
 
 ❌ One watch cannot distinguish *"interested in budget travel"* from *"clicked a listicle"*.
@@ -218,10 +226,10 @@ retrieving for each.
 Search: *"beginner guide to investing in index funds"*
 
 ```
- 1. [Gaming              ] A Beginner Guide to GPU                ← wrong topic
- 2. [Science & Technology] A Beginner Guide to React              ← wrong topic
- 3. [Tech Reviews        ] A Beginner Guide to Chipset            ← wrong topic
- 6. [Finance             ] Dividend Yield on a Budget: 15 Ideas   ← right topic, rank 6
+ 1. [Gaming              ] A Beginner Guide to GPU                  ← wrong topic
+ 2. [Science & Technology] A Beginner Guide to React                ← wrong topic
+ 3. [Education           ] A Beginner Guide to Probability Puzzle   ← wrong topic
+ 6. [Finance             ] Dividend Yield on a Budget: 15 Ideas     ← right topic, rank 6
 ```
 
 ❌ **A genuine, unmitigated content-based failure.** The phrase *"A Beginner Guide to"* is
@@ -251,7 +259,7 @@ reachable is more honest than one that hides them behind clamped ranges.
 ## F6 · Popularity beats the hybrid on the naive offline metric
 
 ```
-full-catalog NDCG@10:   popularity 0.0218  >  ORACLE 0.0198  >  FULL pipeline 0.0125
+full-catalog NDCG@10:   popularity 0.0178  >  ORACLE 0.0169  >  FULL pipeline 0.0120
 ```
 
 ❌ On the standard offline protocol, a trivial popularity list wins.
@@ -259,7 +267,7 @@ full-catalog NDCG@10:   popularity 0.0218  >  ORACLE 0.0198  >  FULL pipeline 0.
 ✅ **But the metric is at fault, not the model** — the oracle built from the simulator's own
 generative parameters *also* loses. Users can only click what the old policy showed them.
 Under the counterfactually-valid protocol the learned ranker leads every genuine model
-(top-1 0.2240 vs 0.1385 for popularity). Full analysis in
+(top-1 0.2090 vs 0.1338 for popularity). Full analysis in
 [EVALUATION.md](EVALUATION.md#finding-2--the-standard-offline-protocol-does-not-measure-the-recommender).
 
 ## F7 · Filter bubble — a single-interest history yields a monoculture
@@ -298,7 +306,7 @@ the single thing I would fix first with more time.
 
 ## Automated coverage
 
-38 tests, `python -m pytest tests/ -q`. The interesting ones are regressions for bugs that
+40 tests, `python -m pytest tests/ -q`. The interesting ones are regressions for bugs that
 actually occurred:
 
 | Test | Guards against |

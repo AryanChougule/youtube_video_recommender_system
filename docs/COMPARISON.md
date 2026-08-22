@@ -66,7 +66,7 @@ evaluator can judge the *recommendations* rather than decode a new layout.
 
 | Dimension | YouTube | ReelRank | Why |
 |---|---|---|---|
-| **Models** | Deep neural nets end-to-end | Matrix factorisation + GBDT | 3,799 users cannot train a deep net. MF is the right capacity for this data size, and the maths is inspectable. |
+| **Models** | Deep neural nets end-to-end | Matrix factorisation + GBDT | 3,803 users cannot train a deep net. MF is the right capacity for this data size, and the maths is inspectable. |
 | **Objectives** | Multi-task (Zhao 2019): watch time, likes, shares, dismissals, survey responses, with a Mixture-of-Experts head and a shallow tower for position bias | Single objective (watch time) | Multi-task needs multiple label streams. I have one. |
 | **Signals** | Audio/video content, thumbnails, ASR transcripts, watch-time curves, subscriptions, survey responses, demographics | Text metadata + simulated watch logs | Availability. |
 | **Explanations** | Minimal ("Recommended for you") | Every item names its recall source, rank, ranker score and policy actions | An evaluation harness has the opposite requirement to a consumer product: it must be legible. |
@@ -162,6 +162,6 @@ stated uncertainty.
 
 **Week 4 — the responsible-AI layer.**
 A quality/authority classifier, exposure fairness constraints across creators (current Gini
-0.809 is not defensible for a creator ecosystem), and a filter-bubble metric tracked per user
+0.799 is not defensible for a creator ecosystem), and a filter-bubble metric tracked per user
 over time rather than per page. If this were going in front of real people, this work would move
 to week 1.

@@ -97,7 +97,7 @@ Nothing else changes — every source is normalised to the same schema at the bo
 
 ## Results
 
-Measured on a **global temporal split** (train on the past, test on the future), 800 held-out
+Measured on a **global temporal split** (train on the past, test on the future), 1,500 held-out
 users, 6,000-video catalog. Every model upstream of the ranker respects the same cutoff.
 
 ### The headline finding: the standard offline protocol is invalid here
@@ -108,8 +108,8 @@ by scoring an **oracle** built from the simulator's own generative parameters:
 
 | Full-catalog retrieval | NDCG@10 |
 |---|---|
-| popularity baseline | **0.0218** |
-| **ORACLE** (true user personas + true hidden video quality) | 0.0198 ❌ |
+| popularity baseline | **0.0178** |
+| **ORACLE** (true user personas + true hidden video quality) | 0.0169 ❌ |
 
 **The data-generating process itself loses to a popularity list.** A user can only click what
 they were shown; the incumbent policy was popularity-heavy, so a better recommender is
@@ -123,13 +123,13 @@ This is the offline protocol that best predicts online lift.
 
 | Scorer | top-1 | NDCG | MRR |
 |---|---|---|---|
-| `[ref] shown position` † | 0.7308 | 0.8908 | 0.8531 |
-| **LEARNED RANKER (19 features)** | **0.2240** | **0.5787** | **0.4473** |
-| content only | 0.2108 | 0.5704 | 0.4364 |
-| CF — ALS only | 0.1818 | 0.5425 | 0.4018 |
-| CF — co-visitation only | 0.1478 | 0.5032 | 0.3532 |
-| popularity | 0.1385 | 0.4998 | 0.3482 |
-| random | 0.1202 | 0.4854 | 0.3302 |
+| `[ref] shown position` † | 0.7365 | 0.8920 | 0.8549 |
+| **LEARNED RANKER (19 features)** | **0.2090** | **0.5707** | **0.4366** |
+| content only | 0.2025 | 0.5671 | 0.4320 |
+| CF — ALS only | 0.1755 | 0.5400 | 0.3982 |
+| CF — co-visitation only | 0.1375 | 0.4943 | 0.3419 |
+| popularity | 0.1338 | 0.4963 | 0.3438 |
+| random | 0.1305 | 0.4933 | 0.3400 |
 
 † *Not a competing model.* Position **causes** clicks under a cascade click model, so this
 row measures the size of position bias — the ceiling on what re-ranking could ever be worth —
@@ -139,14 +139,15 @@ not video quality.
 
 | Scorer | HR@10 | NDCG@10 | mean rank |
 |---|---|---|---|
-| content only | **0.4842** | 0.2469 | 24.17 |
-| **LEARNED RANKER** | 0.4581 | 0.2368 | **22.12** |
-| CF — ALS only | 0.3387 | 0.1784 | 32.88 |
-| popularity | 0.2536 | 0.1354 | 36.90 |
-| CF — co-visitation only | 0.1494 | 0.0821 | 48.15 |
-| random | 0.0929 | 0.0419 | 52.13 |
+| content only | **0.4753** | 0.2389 | 23.85 |
+| **LEARNED RANKER** | 0.4679 | **0.2410** | **21.34** |
+| CF — ALS only | 0.3384 | 0.1748 | 33.05 |
+| popularity | 0.2608 | 0.1429 | 36.96 |
+| CF — co-visitation only | 0.1455 | 0.0798 | 48.21 |
+| random | 0.0926 | 0.0433 | 51.29 |
 
-The hybrid ranker wins on Protocol A and takes the best mean rank on Protocol B.
+The hybrid ranker wins on Protocol A, and on Protocol B takes both the best NDCG@10 and the
+best mean rank (content-only edges it on raw HR@10).
 Sampled metrics are known to flatter simpler models ([Krichene & Rendle, KDD 2020](https://dl.acm.org/doi/10.1145/3394486.3403226)),
 which is why both are reported and neither alone.
 
@@ -154,10 +155,10 @@ which is why both are reported and neither alone.
 
 | Strategy | coverage | Gini (exposure) | novelty (bits) | intra-list diversity | p50 latency |
 |---|---|---|---|---|---|
-| popularity | 0.005 | 0.997 | 9.17 | 0.938 | 0.9 ms |
-| content only | 0.760 | 0.565 | 12.77 | 0.531 | 0.6 ms |
-| CF — ALS only | 0.490 | 0.777 | 11.33 | 0.844 | 0.4 ms |
-| **FULL pipeline** | **0.466** | 0.809 | 11.87 | 0.713 | 22.4 ms |
+| popularity | 0.005 | 0.997 | 9.17 | 0.938 | 0.8 ms |
+| content only | 0.878 | 0.526 | 12.77 | 0.533 | 0.8 ms |
+| CF — ALS only | 0.563 | 0.767 | 11.30 | 0.847 | 0.3 ms |
+| **FULL pipeline** | **0.571** | 0.799 | 11.97 | 0.717 | 20.8 ms |
 
 The popularity baseline reaches **0.5% catalog coverage with a Gini of 0.997** — it shows
 essentially the same 30 videos to everyone. That is what accuracy metrics alone will not tell you,
@@ -165,10 +166,10 @@ and why coverage/Gini/novelty are treated as first-class here.
 
 ### Ranker
 
-`AUC 0.697` · `watch-time-weighted AUC 0.790` · `within-feed top-1 29.8%` (random 14.3%) ·
+`AUC 0.697` · `watch-time-weighted AUC 0.790` · `within-feed top-1 28.9%` (random 14.3%) ·
 824k training rows · 19 features · trained on cross-fitted CF features.
-Top features by permutation importance: `content_sim_profile`, `category_affinity`,
-`log_duration_min`, `log_views`, `engagement_rate`.
+Top features by permutation importance: `category_affinity`, `log_duration_min`,
+`content_sim_profile`, `log_views`, `engagement_rate`.
 
 ---
 

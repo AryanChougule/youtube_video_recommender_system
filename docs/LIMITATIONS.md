@@ -47,7 +47,7 @@ settle whether this system is good**, and nothing here substitutes for that.
 
 ### L4 · Cold items are near-invisible to two of three recall sources
 
-2,282 of 6,000 videos (38%) have no co-visitation neighbours; a video with zero clicks has an
+2,327 of 6,000 videos (39%) have no co-visitation neighbours; a video with zero clicks has an
 ALS factor of exactly zero. Only content similarity and trending can surface it
 ([F1](TEST_CASES.md#f1--cold-items--the-structural-hole-in-collaborative-filtering)).
 
@@ -128,7 +128,7 @@ user-facing, and out of scope here.
 
 ### L16 · No fairness or creator-equity constraints
 
-Gini of exposure for the full pipeline is 0.809 — highly concentrated. Multi-stakeholder
+Gini of exposure for the full pipeline is 0.799 — highly concentrated. Multi-stakeholder
 recommendation (balancing viewer utility against creator exposure) is an active research area
 and is not addressed.
 

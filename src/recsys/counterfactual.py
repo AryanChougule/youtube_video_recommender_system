@@ -16,8 +16,8 @@ We proved this rather than asserting it. Scoring an ORACLE -- the exact
 generative model that produced the data, with true user personas and true
 hidden video quality -- on full-catalog retrieval:
 
-    popularity   NDCG@10 = 0.0218
-    ORACLE       NDCG@10 = 0.0198     <- the data-generating process LOSES
+    popularity   NDCG@10 = 0.0178
+    ORACLE       NDCG@10 = 0.0169     <- the data-generating process LOSES
 
 If the true model cannot win, the metric is not measuring model quality. Any
 conclusion drawn from full-catalog NDCG on logged data is unsafe.

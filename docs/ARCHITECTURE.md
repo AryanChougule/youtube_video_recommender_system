@@ -67,7 +67,7 @@ design — if two rows had the same failure mode, one of them should be deleted.
 | Source | Retrieves by | Fails when |
 |---|---|---|
 | Content (TF-IDF+SVD) | semantic text similarity | filter bubble; cannot cross vocabulary gaps |
-| Co-visitation | same-session co-watch | needs ≥2 co-watches; 2,282 of 6,000 items have no neighbours |
+| Co-visitation | same-session co-watch | needs ≥2 co-watches; 2,327 of 6,000 items have no neighbours |
 | ALS | latent factor affinity | needs a trained catalog; weak on cold items |
 | Channel affinity | creator loyalty | definitionally incapable of discovery |
 | Trending | velocity × freshness | not personalised at all |
@@ -77,12 +77,12 @@ staying on-topic by ground-truth similarity):
 
 | | escapes category | still on-topic |
 |---|---|---|
-| Content | 1.5% | 0.904 |
-| Co-visitation | 38.6% | 0.544 |
-| **ALS** | **12.3%** | **0.782** |
+| Content | 1.5% | 0.907 |
+| Co-visitation | 41.0% | 0.531 |
+| **ALS** | **16.4%** | **0.743** |
 
 That is the filter bubble, quantified. Content essentially never leaves the category.
-ALS is the sweet spot — it crosses categories 8× more often than content while staying
+ALS is the sweet spot — it crosses categories 11× more often than content while staying
 genuinely on-topic, recovering the latent "bridge" topics **from behaviour alone, never
 having seen the text**.
 

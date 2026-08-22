@@ -65,7 +65,7 @@ def dcg(gains: Iterable[float]) -> float:
     """Discounted cumulative gain with the log2(rank+1) discount.
 
     The discount encodes the empirical fact that attention falls off sharply
-    with position -- which our own logs confirm (34% CTR at rank 0 vs 0.14% at
+    with position -- which our own logs confirm (52% CTR at rank 0 vs 0.1% at
     rank 7). A metric that treated position 1 and position 10 alike would be
     measuring something users do not experience.
     """

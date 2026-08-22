@@ -67,7 +67,7 @@ true durations.
 
 ### A7 · A 96-dimensional latent space is enough
 
-**Why:** 96 factors over 6,000 items and 3,799 users, at 0.51% density. More factors would
+**Why:** 96 factors over 6,000 items and 3,803 users, at 0.51% density. More factors would
 overfit sparse data.
 
 **If wrong:** a larger catalog needs more capacity. `als.factors` is a config knob; the cost is
@@ -94,8 +94,9 @@ correct. Treating unwatched as negative is the single most common beginner error
 
 **Why:** the entire premise of collaborative filtering.
 
-**Verified:** ALS neighbours cross category boundaries 12.3% of the time while staying on-topic
-(ground-truth similarity 0.782) — it recovered the bridges without ever seeing the text.
+**Verified:** ALS neighbours cross category boundaries 16.4% of the time while staying on-topic
+(ground-truth similarity 0.743, vs 0.907 for content which crosses only 1.5%) — it recovered the
+bridges without ever seeing the text.
 
 ### A11 · The ranker's odds approximate expected watch time
 
@@ -110,8 +111,9 @@ $N - k \approx N$). Our positive rate is 14.1%, comfortably inside the regime.
 
 ### A12 · Diversity is worth a small accuracy cost
 
-**Why:** measured — accuracy is nearly flat across MMR λ while diversity and coverage move
-substantially, so diversity here is close to free.
+**Why:** accuracy varies by ~11% across the whole λ range while coverage moves 16% — and the
+accuracy metric doing the ranking there is the *biased* full-catalog one, which
+[EVALUATION.md](EVALUATION.md) shows is not a safe basis for a decision.
 
 **If wrong:** if users genuinely want a monoculture, λ = 1.0 is correct. Only an A/B test can
 settle it; it is exposed as a live slider precisely because it is a product judgement, not a

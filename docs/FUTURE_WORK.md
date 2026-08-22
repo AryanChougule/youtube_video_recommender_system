@@ -141,7 +141,7 @@ Turns the demo from a static artifact into a live system — and makes P5 meanin
 **Closes:** [L15](LIMITATIONS.md) · [L16](LIMITATIONS.md)
 
 - Quality / authority classification, with boosting for authoritative sources on news and health.
-- Exposure-fairness constraints across creators — the current Gini of 0.809 is not defensible for
+- Exposure-fairness constraints across creators — the current Gini of 0.799 is not defensible for
   a creator ecosystem.
 - A **per-user, longitudinal** filter-bubble metric: how much has this person's topic entropy
   narrowed over 30 days? Page-level diversity does not capture drift over time.
