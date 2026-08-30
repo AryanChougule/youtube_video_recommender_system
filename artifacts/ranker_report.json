@@ -1,0 +1,51 @@
+{
+  "objective": "watch_time",
+  "use_ips": true,
+  "model": "hgb",
+  "crossfit_folds": 4,
+  "metrics": {
+    "auc": 0.6627215736026135,
+    "weighted_auc": 0.7552852427278104,
+    "log_loss": 0.4025828952776695,
+    "n_train": 702070,
+    "n_test": 175560,
+    "within_feed_top1": 0.2575,
+    "within_feed_top1_random": 0.1429
+  },
+  "dataset": {
+    "n_rows": 877630,
+    "n_positives": 124097,
+    "n_feeds": 126624,
+    "objective": "watch_time",
+    "crossfit_folds": 4,
+    "position_decay_assumed": 0.82,
+    "n_features": 19,
+    "positive_rate": 0.1414
+  },
+  "permutation_importance": {
+    "log_duration_min": 0.05058761555371116,
+    "category_affinity": 0.04513424642052514,
+    "content_sim_profile": 0.04244182999204512,
+    "log_views": 0.010909643346312762,
+    "engagement_rate": 0.008855535200310386,
+    "content_sim_max_hist": 0.0063928653154370725,
+    "is_short": 0.004706070503542954,
+    "views_vs_user": 0.0023871788461737875,
+    "als_score": 0.0023619561897675334,
+    "content_sim_recent": 0.0022196722130422377,
+    "channel_affinity": 0.0015139377680503847,
+    "like_rate": 0.0005607897473876022,
+    "log_views_per_day": 0.0003858424009004861,
+    "duration_fit": 0.00013137048951206154,
+    "channel_seen": 0.0,
+    "n_tags": 0.0,
+    "title_length": -3.693916775793227e-07,
+    "covisit_score": -3.842124841772302e-05,
+    "log_age_days": -0.0020595472465111766
+  },
+  "temporal_split": {
+    "cutoff": "2026-08-03 14:21:22.887233280",
+    "cutoff_ns": 1785766882887233280,
+    "test_size": 0.2
+  }
+}

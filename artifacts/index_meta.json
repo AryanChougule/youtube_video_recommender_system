@@ -1,0 +1,22 @@
+{
+  "n_users": 3831,
+  "n_items": 6000,
+  "als_factors": 96,
+  "als_iterations": 18,
+  "als_alpha": 30.0,
+  "als_regularization": 0.05,
+  "covisitation_damping": 0.5,
+  "items_with_covisit_neighbours": 4153,
+  "signal": "watch_fraction",
+  "trained_on_full_log": false,
+  "temporal_split": {
+    "cutoff": "2026-08-03 14:21:22.887233280",
+    "cutoff_ns": 1785766882887233280,
+    "test_size": 0.2
+  },
+  "first_video_id": "E_t5siPC0Gy",
+  "last_video_id": "ZFZgQXSerIX",
+  "first_user_id": "u00000",
+  "last_user_id": "u03999",
+  "seed": 42
+}

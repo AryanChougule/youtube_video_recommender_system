@@ -26,8 +26,10 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # Dependencies first so code edits do not bust the pip layer.
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-build.txt ./
+# Build requirements include pandas/pyarrow, which the artifact build needs.
+# Serving itself is pandas-free (see src/recsys/catalog_view.py).
+RUN pip install --no-cache-dir -r requirements-build.txt
 
 COPY config.yaml pyproject.toml ./
 COPY src/ ./src/

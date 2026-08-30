@@ -16,7 +16,10 @@ import pandas as pd
 
 from ..clock import reference_now as clock_reference_now
 
-TAG_SEP = "|"
+# Re-exported from recsys.tags, which has NO pandas dependency. The serving
+# path needs split_tags but must never pull pandas in -- keeping these three
+# symbols in their own module is what lets the serving bundle drop 55MB.
+from ..tags import TAG_SEP, join_tags, split_tags  # noqa: F401
 
 #: One row per video.
 CATALOG_SCHEMA: dict[str, str] = {
@@ -57,18 +60,6 @@ INTERACTION_SCHEMA: dict[str, str] = {
 }
 
 
-def split_tags(value: object) -> List[str]:
-    """Turn a stored tag string back into a list."""
-    if value is None or (isinstance(value, float) and np.isnan(value)):
-        return []
-    text = str(value).strip()
-    if not text:
-        return []
-    return [t.strip() for t in text.split(TAG_SEP) if t.strip()]
-
-
-def join_tags(tags: List[str]) -> str:
-    return TAG_SEP.join(t.strip() for t in tags if t and t.strip())
 
 
 def coerce(df: pd.DataFrame, schema: dict[str, str], name: str) -> pd.DataFrame:

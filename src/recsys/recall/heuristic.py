@@ -18,7 +18,6 @@ from __future__ import annotations
 from typing import Sequence
 
 import numpy as np
-import pandas as pd
 
 from .content import RecallResult
 
@@ -36,7 +35,7 @@ class TrendingRecall:
     "Trending" mean something different from "Most viewed".
     """
 
-    def __init__(self, item_stats: pd.DataFrame, halflife_days: float = 21.0):
+    def __init__(self, item_stats, halflife_days: float = 21.0):
         self.age_days = item_stats["age_days"].to_numpy(dtype=np.float64)
         self.views_per_day = item_stats["views_per_day"].to_numpy(dtype=np.float64)
         self.log_views = item_stats["log_views"].to_numpy(dtype=np.float64)
@@ -82,17 +81,21 @@ class ChannelRecall:
     the other about what a good page looks like.
     """
 
-    def __init__(self, catalog: pd.DataFrame, item_stats: pd.DataFrame):
+    def __init__(self, catalog, item_stats):
         self.channel_of = catalog["channel_id"].to_numpy()
         self.quality = (
             item_stats["log_views"].to_numpy(dtype=np.float64)
             * (1.0 + 1.5 * item_stats["engagement_rate"].to_numpy(dtype=np.float64))
         )
-        # channel_id -> item row indices, built once
-        self.by_channel: dict[str, np.ndarray] = {
-            ch: grp.to_numpy()
-            for ch, grp in catalog.reset_index().groupby("channel_id")["index"]
-        }
+        # channel_id -> item row indices. CatalogView precomputes this; a
+        # DataFrame is still accepted so build-time callers keep working.
+        if hasattr(catalog, "by_channel"):
+            self.by_channel = catalog.by_channel
+        else:
+            self.by_channel = {
+                ch: grp.to_numpy()
+                for ch, grp in catalog.reset_index().groupby("channel_id")["index"]
+            }
 
     def for_history(self, history: Sequence[int], k: int = 60,
                     weights: Sequence[float] | None = None,

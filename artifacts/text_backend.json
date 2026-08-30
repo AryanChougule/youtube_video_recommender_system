@@ -1,0 +1,6 @@
+{
+  "backend": "tfidf_svd",
+  "dims": 256,
+  "vocab_size": 14905,
+  "explained_variance": 0.486
+}

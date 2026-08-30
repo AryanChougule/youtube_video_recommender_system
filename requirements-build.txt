@@ -1,0 +1,6 @@
+# Everything in requirements.txt, plus what only the BUILD pipeline needs:
+# parquet IO, dataframe wrangling, and the YouTube Data API client.
+-r requirements.txt
+pandas>=2.0
+pyarrow>=14.0
+requests>=2.31

@@ -24,7 +24,6 @@ from dataclasses import dataclass, field
 from typing import Sequence
 
 import numpy as np
-import pandas as pd
 
 FEATURE_NAMES: list[str] = [
     # --- match between the user and this candidate (the important ones) ---
@@ -94,8 +93,8 @@ class FeatureBuilder:
 
     def __init__(
         self,
-        catalog: pd.DataFrame,
-        item_stats: pd.DataFrame,
+        catalog,
+        item_stats,
         item_vectors: np.ndarray,
         covisitation=None,
         als=None,

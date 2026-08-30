@@ -26,7 +26,6 @@ from dataclasses import dataclass
 from typing import Sequence
 
 import numpy as np
-import pandas as pd
 from scipy import sparse
 
 from .content import RecallResult
@@ -72,6 +71,8 @@ def build_interaction_matrices(
     but a click-based model reads it as a positive. Encoding engagement here is
     how the "optimise watch time, not clicks" lesson enters the model.
     """
+    import pandas as pd  # build-time only; keeps pandas out of the serving bundle
+
     clicked = interactions[interactions["clicked"] == 1]
     if clicked.empty:
         raise ValueError("no clicks in the interaction log")

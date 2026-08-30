@@ -1,16 +1,22 @@
 # ---------------------------------------------------------------------------
-# Runtime dependencies (serving + offline build).
-# Deliberately minimal: ALS, item2vec and the ANN search are implemented from
-# scratch in NumPy, so `implicit`, `faiss` and `lightgbm` are NOT required.
-# This keeps the deployed container small and the build fully reproducible.
+# SERVING dependencies only.
+#
+# Deliberately excludes pandas: the serving path reads a NumPy+JSON catalog
+# bundle (see src/recsys/catalog_view.py), not parquet. That is worth 55MB,
+# which is the difference between fitting a 250MB serverless limit and not:
+#
+#     with pandas   279 MB   (over)
+#     without       231 MB   (19 MB headroom)
+#
+# The BUILD pipeline does need pandas -- use requirements-build.txt for that.
+# ALS, co-visitation, the nearest-neighbour search and MMR are hand-written,
+# so `implicit`, `faiss`, `lightgbm` and torch are absent by design.
 # ---------------------------------------------------------------------------
 numpy>=1.26,<2.1
-pandas>=2.0
 scipy>=1.11
 scikit-learn>=1.4
+joblib>=1.3
 fastapi>=0.110
 uvicorn[standard]>=0.30
 pydantic>=2.5
 PyYAML>=6.0
-requests>=2.31
-jinja2>=3.1

@@ -20,11 +20,10 @@ from dataclasses import asdict, dataclass, field
 from typing import Sequence
 
 import numpy as np
-import pandas as pd
 
 from .artifacts import Artifacts
 from .intent import DEFAULT_WINDOW, detect_intent
-from .data.schema import split_tags
+from .tags import split_tags
 from .metrics import intra_list_diversity, novelty
 from .policy.rerank import apply_policy
 from .recall.blend import CandidateSet, reciprocal_rank_fusion
@@ -89,7 +88,7 @@ class RecommendationEngine:
         # video" than raw view_count.
         self.popularity = np.maximum(artifacts.covisitation.popularity, 0.0) + 1.0
         # Tags per item, for naming the session's current focus in the UI.
-        self.tag_lists = [split_tags(t) for t in catalog["tags"].fillna("")]
+        self.tag_lists = [split_tags(t) for t in catalog["tags"]]
 
     # ------------------------------------------------------------------
     # public surfaces
@@ -308,7 +307,7 @@ class RecommendationEngine:
         items: list[RecommendedItem] = []
         for rank, item_idx in enumerate(policy.order):
             item_idx = int(item_idx)
-            row = catalog.iloc[item_idx]
+            row = catalog.row(item_idx)
             sources = candidates.sources_for(item_idx)
             source_scores = {
                 name: round(candidates.score_from(name, item_idx), 4)
@@ -343,7 +342,7 @@ class RecommendationEngine:
                 view_count=int(row["view_count"]),
                 like_count=int(row["like_count"]),
                 duration_seconds=int(row["duration_seconds"]),
-                published_at=pd.Timestamp(row["published_at"]).strftime("%Y-%m-%d"),
+                published_at=str(row["published_at"])[:10],
                 age_days=round(float(self.age_days[item_idx]), 1),
                 thumbnail_url=str(row["thumbnail_url"]),
                 rank=rank,

@@ -126,7 +126,7 @@ def meta() -> dict:
         "catalog": {
             "size": art.n_items,
             "channels": int(art.catalog["channel_id"].nunique()),
-            "categories": sorted(art.catalog["category"].dropna().unique().tolist()),
+            "categories": sorted(set(art.catalog["category"].tolist())),
             "source": art.data_meta.get("source"),
             "latent_topics_origin": art.data_meta.get("latent_topics_origin"),
         },
@@ -202,8 +202,8 @@ def video(video_id: str) -> dict:
     eng = engine()
     if video_id not in eng.art.video_index:
         raise HTTPException(404, detail=f"unknown video_id {video_id}")
-    row = eng.art.catalog.iloc[eng.art.idx(video_id)]
     idx = eng.art.idx(video_id)
+    row = eng.art.catalog.row(idx)
     return {
         "video_id": str(row["video_id"]), "title": str(row["title"]),
         "channel_id": str(row["channel_id"]), "channel_title": str(row["channel_title"]),
@@ -236,10 +236,14 @@ def personas() -> dict:
             return []
         # Mid-popularity videos: the very top would make every persona look
         # like the popularity baseline.
-        subset = subset.nlargest(min(120, len(subset)), "view_count").tail(80)
-        take = min(n, len(subset))
-        rows = subset.iloc[rng.choice(len(subset), size=take, replace=False)]
-        return rows["video_id"].tolist()
+        ranked = subset.nlargest(min(120, len(subset)), "view_count")
+        mid = ranked.iloc_slice(max(0, len(ranked) - 80), len(ranked))
+        take = min(n, len(mid))
+        if take <= 0:
+            return []
+        chosen = rng.choice(len(mid), size=take, replace=False)
+        ids = mid["video_id"].values
+        return [str(ids[int(i)]) for i in chosen]
 
     definitions = [
         ("cold_start", "Brand new viewer", "No history at all - shows the cold-start path", []),
@@ -259,8 +263,8 @@ def personas() -> dict:
             "video_ids": ids,
             "videos": [
                 {"video_id": v,
-                 "title": str(catalog.iloc[art.idx(v)]["title"]),
-                 "category": str(catalog.iloc[art.idx(v)]["category"])}
+                 "title": str(catalog["title"][art.idx(v)]),
+                 "category": str(catalog["category"][art.idx(v)])}
                 for v in ids
             ],
         })
@@ -274,12 +278,15 @@ def catalog_sample(n: int = Query(24, ge=1, le=60), category: str | None = None)
     catalog = art.catalog
     if category:
         catalog = catalog[catalog["category"] == category]
-    if catalog.empty:
+        if catalog.empty:
+            return {"items": []}
+    elif len(catalog) == 0:
         return {"items": []}
     rng = np.random.default_rng(int(time.time()) % 100000)
-    subset = catalog.nlargest(min(600, len(catalog)), "view_count")
-    take = min(n, len(subset))
-    rows = subset.iloc[rng.choice(len(subset), size=take, replace=False)]
+    pool = art.catalog.top_by("view_count", min(600, len(catalog)),
+                              subset=getattr(catalog, "index", None))
+    take = min(n, len(pool))
+    chosen = pool[rng.choice(len(pool), size=take, replace=False)] if take else []
     return {"items": [
         {"video_id": str(r["video_id"]), "title": str(r["title"]),
          "channel_title": str(r["channel_title"]), "category": str(r["category"]),
@@ -287,7 +294,7 @@ def catalog_sample(n: int = Query(24, ge=1, le=60), category: str | None = None)
          "duration_seconds": int(r["duration_seconds"]),
          "published_at": str(r["published_at"])[:10],
          "thumbnail_url": str(r["thumbnail_url"])}
-        for _, r in rows.iterrows()
+        for r in (art.catalog.row(int(i)) for i in chosen)
     ]}
 
 

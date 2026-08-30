@@ -17,8 +17,8 @@ from typing import Optional
 
 import joblib
 import numpy as np
-import pandas as pd
 
+from .catalog_view import CatalogView
 from .config import Config, Paths, load_config
 from .features.text import TextIndex
 from .rank.features import FeatureBuilder
@@ -35,8 +35,8 @@ class ArtifactError(RuntimeError):
 @dataclass
 class Artifacts:
     config: Config
-    catalog: pd.DataFrame
-    item_stats: pd.DataFrame
+    catalog: CatalogView          # pandas-free; see recsys.catalog_view
+    item_stats: CatalogView
     text_index: TextIndex
     content: ContentRecall
     covisitation: CoVisitation
@@ -76,8 +76,9 @@ def load_artifacts(cfg: Config | None = None, with_ranker: bool = True,
                    verbose: bool = False) -> Artifacts:
     cfg = cfg or load_config()
 
-    catalog = pd.read_parquet(_require(Paths.catalog, "catalog"))
-    item_stats = pd.read_parquet(_require(Paths.item_stats, "item stats"))
+    catalog = CatalogView.load(_require(Paths.serving_npz, "serving catalog"),
+                               _require(Paths.serving_json, "serving catalog json"))
+    item_stats = catalog          # stats live in the same bundle
     item_vectors = np.load(_require(Paths.item_vectors, "item vectors"))
     encoder = joblib.load(_require(Paths.text_encoder, "text encoder"))
     cooc = np.load(_require(Paths.cooccurrence, "co-visitation"))
@@ -98,7 +99,7 @@ def load_artifacts(cfg: Config | None = None, with_ranker: bool = True,
                 f"{name} has {len(array)} rows but the catalog has {n}. "
                 "Artifacts are stale -- rerun `python scripts/build_all.py`."
             )
-    if index_meta.get("first_video_id") and index_meta["first_video_id"] != catalog["video_id"].iloc[0]:
+    if index_meta.get("first_video_id") and index_meta["first_video_id"] != catalog["video_id"][0]:
         raise ArtifactError(
             "catalog row order changed since the models were trained. "
             "Rerun `python scripts/build_all.py`."
@@ -142,7 +143,7 @@ def load_artifacts(cfg: Config | None = None, with_ranker: bool = True,
         channel=ChannelRecall(catalog, item_stats),
         features=features, ranker=ranker, multitask=multitask,
         index_meta=index_meta, data_meta=data_meta,
-        video_index={v: i for i, v in enumerate(catalog["video_id"])},
+        video_index={str(v): i for i, v in enumerate(catalog["video_id"])},
         video_ids=catalog["video_id"].to_numpy(),
     )
     if verbose:

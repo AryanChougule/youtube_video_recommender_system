@@ -154,15 +154,27 @@ def test_every_item_carries_provenance(engine, art):
 
 
 def test_ground_truth_never_leaks_into_the_response(engine, art):
-    """`latent_quality` is a hidden generative variable.
+    """Hidden generative variables must never reach the serving layer.
 
-    Serving it would let the UI (and any evaluator) see the answer key. This is
-    the single most important safety property of the serving payload.
+    This used to assert "the column exists in the catalog but is absent from
+    the response" -- a behavioural guarantee that one careless `to_dict()`
+    could break. The serving catalog is now a NumPy bundle containing only the
+    columns serving needs, so the latents are absent by CONSTRUCTION: there is
+    no code path that could serve them, because the data is not loaded at all.
     """
+    latent = ("latent_quality", "latent_clickbait")
+    for column in latent:
+        assert column not in art.catalog.columns,             f"{column} reached the serving bundle -- it is ground truth"
+
     res = engine.recommend(history=art.catalog["video_id"].head(3).tolist(), n=10)
     blob = str(res.to_dict())
-    assert "latent_quality" in art.catalog.columns   # it exists...
-    assert "latent_quality" not in blob              # ...but never ships
+    for column in latent:
+        assert column not in blob
+
+    # ...and it really does still exist upstream, in the build-time catalog.
+    if Paths.catalog.exists():
+        built = pd.read_parquet(Paths.catalog)
+        assert "latent_quality" in built.columns
 
 
 def test_latency_is_within_budget(engine, art):

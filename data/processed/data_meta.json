@@ -1,0 +1,23 @@
+{
+  "source": "synthetic",
+  "n_videos": 6000,
+  "n_channels": 418,
+  "n_categories": 13,
+  "latent_topics": 40,
+  "latent_topics_origin": "ground_truth",
+  "notes": [
+    "youtube_api skipped: $YOUTUBE_API_KEY not set",
+    "kaggle failed: FileNotFoundError: no CSVs matched 'data/raw/*videos.csv'"
+  ],
+  "n_users": 3831,
+  "n_impressions": 1142312,
+  "n_clicks": 124097,
+  "ctr": 0.1086,
+  "clicks_per_user": 32.39,
+  "matrix_density": 0.005399,
+  "n_sessions": 27043,
+  "sessions_with_intent": 0.45135524904781277,
+  "satisfaction_rate": 0.7351,
+  "seed": 42,
+  "built_at": "2026-08-22T09:22:20Z"
+}

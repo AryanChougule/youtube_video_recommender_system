@@ -67,6 +67,12 @@ def main() -> None:
         "duration_minutes", "is_short", "title_length", "n_tags",
     ]
     stats[keep].to_parquet(Paths.item_stats, index=False)
+
+    # Pandas-free serving bundle. Serving needs column access and row lookup,
+    # not joins or parquet IO -- and shipping pandas costs 55MB, which is the
+    # difference between fitting a 250MB serverless limit and not.
+    from recsys.catalog_view import CatalogView
+    CatalogView.from_frames(catalog, stats).save(Paths.serving_npz, Paths.serving_json)
     print(f"    reference 'now' = {now:%Y-%m-%d} "
           f"(anchored to newest video so freshness stays meaningful)")
 
@@ -76,8 +82,8 @@ def main() -> None:
     if spread < 1e-3:
         raise RuntimeError(f"item vectors are degenerate (similarity std={spread:.2e})")
 
-    for path in (Paths.item_vectors, Paths.text_encoder,
-                 Paths.text_backend, Paths.item_stats):
+    for path in (Paths.item_vectors, Paths.text_encoder, Paths.text_backend,
+                 Paths.item_stats, Paths.serving_npz, Paths.serving_json):
         print(f"    {path.relative_to(Paths.root)}  ({path.stat().st_size / 1e6:.1f} MB)")
     print(f"\nDone in {time.time() - started:.1f}s")
 

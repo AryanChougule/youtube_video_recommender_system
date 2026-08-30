@@ -58,6 +58,9 @@ class Paths:
     ranker = artifacts / "ranker.joblib"
     multitask_ranker = artifacts / "multitask_ranker.joblib"
     item_stats = artifacts / "item_stats.parquet"
+    # pandas-free serving bundle (see recsys.catalog_view)
+    serving_npz = artifacts / "serving_catalog.npz"
+    serving_json = artifacts / "serving_catalog.json"
     index_meta = artifacts / "index_meta.json"
     eval_report = artifacts / "evaluation.json"
 
