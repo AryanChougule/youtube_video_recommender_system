@@ -131,6 +131,15 @@ class MultiTaskRanker:
                           f"(positive rate {y.mean():.2%})")
         return self
 
+    @classmethod
+    def from_numpy(cls, models: dict, weights: dict,
+                   feature_names) -> "MultiTaskRanker":
+        """Rebuild an inference-only head set from the exported NumPy forests."""
+        obj = cls(tasks=list(models), weights=dict(weights))
+        obj.models = dict(models)
+        obj.feature_names = list(feature_names) or list(FEATURE_NAMES)
+        return obj
+
     # -- inference --------------------------------------------------------
     def predict_tasks(self, X: np.ndarray) -> dict[str, np.ndarray]:
         if len(X) == 0:

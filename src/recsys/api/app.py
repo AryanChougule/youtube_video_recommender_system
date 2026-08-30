@@ -84,11 +84,17 @@ def _startup() -> None:
         STATE["loaded_at"] = time.time()
         print(f"[api] artifacts loaded in {time.time() - started:.1f}s "
               f"({artifacts.n_items:,} videos)")
-    except ArtifactError as exc:
-        # Start anyway and report the problem through /api/health, so a
-        # misconfigured deploy shows a diagnosable page instead of a dead port.
-        STATE["error"] = str(exc)
-        print(f"[api] FAILED to load artifacts: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        # Start anyway and report the problem through /api/health, so a broken
+        # deploy shows a diagnosable page instead of a bare 500.
+        #
+        # Deliberately catches Exception, not just ArtifactError. A serverless
+        # platform that prunes "unused" dependency files can break unpickling
+        # with ModuleNotFoundError long before any of our own checks run --
+        # which is exactly what happened on Vercel, and a 502 with no body is
+        # far harder to diagnose than a health endpoint that names the cause.
+        STATE["error"] = f"{type(exc).__name__}: {exc}"
+        print(f"[api] FAILED to load artifacts: {STATE['error']}")
 
 
 def engine() -> RecommendationEngine:

@@ -1,21 +1,35 @@
 # ---------------------------------------------------------------------------
 # SERVING dependencies only.
 #
-# Deliberately excludes pandas: the serving path reads a NumPy+JSON catalog
-# bundle (see src/recsys/catalog_view.py), not parquet. That is worth 55MB,
-# which is the difference between fitting a 250MB serverless limit and not:
+# The list is this short on purpose. Two deployment failures drove it there,
+# and both had the same root cause -- shipping libraries that only the BUILD
+# needs:
 #
-#     with pandas   279 MB   (over)
-#     without       231 MB   (19 MB headroom)
+#   pandas        excluded. Serving reads a NumPy+JSON catalog bundle, not
+#                 parquet (src/recsys/catalog_view.py).           -55MB
 #
-# The BUILD pipeline does need pandas -- use requirements-build.txt for that.
-# ALS, co-visitation, the nearest-neighbour search and MMR are hand-written,
-# so `implicit`, `faiss`, `lightgbm` and torch are absent by design.
+#   scikit-learn  excluded. The trained trees and the TF-IDF/SVD encoder are
+#   scipy         exported to plain arrays at build time
+#   joblib        (src/recsys/serving/), so nothing is unpickled at
+#                 request time.                                   -200MB
+#
+# The size mattered, but portability mattered more. A pickled
+# HistGradientBoostingClassifier references a Cython class whose __module__ is
+# the bare name "_loss", so unpickling needs a top-level `import _loss` to
+# resolve. That works locally by accident of import order and did not work in
+# the deployed function, which failed with
+#
+#     ModuleNotFoundError: No module named '_loss'
+#
+# Pinning versions did not fix it, because the version was never the cause.
+# Exporting the trees removed the reference and the dependency together.
+#
+# tests/test_serving_deps.py enforces this list: it blocks every excluded
+# library and then runs a real recommendation and a real search.
+#
+# The BUILD pipeline needs all of them -- see requirements-build.txt.
 # ---------------------------------------------------------------------------
-numpy>=1.26,<2.1
-scipy>=1.11
-scikit-learn>=1.4
-joblib>=1.3
+numpy>=1.26,<3
 fastapi>=0.110
 uvicorn[standard]>=0.30
 pydantic>=2.5

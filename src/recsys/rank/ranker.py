@@ -109,6 +109,19 @@ class Ranker:
                   f"logloss={self.metrics.log_loss:.4f}")
         return self
 
+    @classmethod
+    def from_numpy(cls, trees, feature_names) -> "Ranker":
+        """Rebuild an inference-only Ranker around an exported NumPy forest.
+
+        Serving takes this path; training never does. The estimator is gone, so
+        ``fit`` and ``permutation_importance`` would fail -- which is correct,
+        because nothing in the serving container should be calling them.
+        """
+        obj = cls()
+        obj.model = trees
+        obj.feature_names = list(feature_names) or list(FEATURE_NAMES)
+        return obj
+
     # -- inference --------------------------------------------------------
     def score(self, X: np.ndarray) -> np.ndarray:
         """Expected-watch-time proxy: the ODDS, not the probability.

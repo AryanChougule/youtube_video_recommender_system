@@ -14,6 +14,7 @@ Stage order is a hard dependency chain:
     03 cf        co-visitation + ALS  (needs log; respects the temporal cutoff)
     04 ranker    learning-to-rank     (needs 02 + 03; cross-fits CF per fold)
     05 evaluate  offline metrics      (needs everything)
+    12 export    NumPy serving bundle (needs 02 + 04; drops scikit-learn)
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ STAGES = [
     ("03_train_cf.py", "co-visitation + implicit ALS"),
     ("04_train_ranker.py", "learning-to-rank model"),
     ("05_evaluate.py", "offline evaluation + ablation"),
+    ("12_export_serving.py", "NumPy-only serving bundle"),
 ]
 
 

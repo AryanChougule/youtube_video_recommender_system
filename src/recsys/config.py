@@ -58,9 +58,13 @@ class Paths:
     ranker = artifacts / "ranker.joblib"
     multitask_ranker = artifacts / "multitask_ranker.joblib"
     item_stats = artifacts / "item_stats.parquet"
-    # pandas-free serving bundle (see recsys.catalog_view)
+    # The serving bundle: catalog + models, both NumPy-only, so the deployed
+    # image needs neither pandas nor scikit-learn. See recsys.catalog_view and
+    # recsys.serving for why each exists.
     serving_npz = artifacts / "serving_catalog.npz"
     serving_json = artifacts / "serving_catalog.json"
+    serving_models_npz = artifacts / "serving_models.npz"
+    serving_models_json = artifacts / "serving_models.json"
     index_meta = artifacts / "index_meta.json"
     eval_report = artifacts / "evaluation.json"
 

@@ -15,17 +15,18 @@ import json
 from dataclasses import dataclass
 from typing import Optional
 
-import joblib
 import numpy as np
 
 from .catalog_view import CatalogView
 from .config import Config, Paths, load_config
 from .features.text import TextIndex
 from .rank.features import FeatureBuilder
+from .rank.multitask import MultiTaskRanker
 from .rank.ranker import Ranker
 from .recall.cf import CoVisitation, ImplicitALS
 from .recall.content import ContentRecall
 from .recall.heuristic import ChannelRecall, TrendingRecall
+from .serving import load_serving_models
 
 
 class ArtifactError(RuntimeError):
@@ -80,7 +81,14 @@ def load_artifacts(cfg: Config | None = None, with_ranker: bool = True,
                                _require(Paths.serving_json, "serving catalog json"))
     item_stats = catalog          # stats live in the same bundle
     item_vectors = np.load(_require(Paths.item_vectors, "item vectors"))
-    encoder = joblib.load(_require(Paths.text_encoder, "text encoder"))
+    # The NumPy bundle carries the query encoder and every tree, so serving
+    # imports neither scikit-learn nor joblib. See recsys.serving.trees for the
+    # deployment failure that motivated it.
+    models = load_serving_models(
+        _require(Paths.serving_models_npz, "serving models"),
+        _require(Paths.serving_models_json, "serving models meta"),
+    )
+    encoder = models.text
     cooc = np.load(_require(Paths.cooccurrence, "co-visitation"))
     user_factors = np.load(_require(Paths.als_user_factors, "ALS user factors"))
     item_factors = np.load(_require(Paths.als_item_factors, "ALS item factors"))
@@ -120,16 +128,18 @@ def load_artifacts(cfg: Config | None = None, with_ranker: bool = True,
     )
 
     ranker: Optional[Ranker] = None
-    if with_ranker and Paths.ranker.exists():
-        ranker = joblib.load(Paths.ranker)
+    if with_ranker and models.ranker is not None:
+        ranker = Ranker.from_numpy(models.ranker, models.feature_names)
     elif with_ranker:
         raise ArtifactError(
-            f"missing ranker: {Paths.ranker}\nRun `python scripts/04_train_ranker.py`."
+            f"no ranker in {Paths.serving_models_npz}\n"
+            "Run `python scripts/04_train_ranker.py`."
         )
 
     multitask = None
-    if with_ranker and Paths.multitask_ranker.exists():
-        multitask = joblib.load(Paths.multitask_ranker)
+    if with_ranker and models.multitask:
+        multitask = MultiTaskRanker.from_numpy(
+            models.multitask, models.multitask_weights, models.feature_names)
 
     features = FeatureBuilder(
         catalog=catalog, item_stats=item_stats, item_vectors=item_vectors,

@@ -26,9 +26,16 @@ from dataclasses import dataclass
 from typing import Sequence
 
 import numpy as np
-from scipy import sparse
 
 from .content import RecallResult
+
+# SciPy is a BUILD dependency, not a serving one. Every sparse operation here
+# (S^T S, the ALS normal equations) happens while training; inference is pure
+# NumPy -- dense factor matrices and a 96x96 solve. Importing it lazily keeps
+# ~90MB of SciPy out of the deployed image, and tests/test_serving_deps.py
+# fails if it ever leaks back in. Annotations are strings under
+# `from __future__ import annotations`, so the `sparse.*` hints below cost
+# nothing at import time.
 
 
 def _single_threaded_blas():
@@ -85,6 +92,8 @@ def build_interaction_matrices(
     valid = rows.notna() & cols.notna()
     rows, cols = rows[valid].astype(int), cols[valid].astype(int)
     values = clicked.loc[valid, signal].astype(float).clip(0.01, 1.0)
+
+    from scipy import sparse            # build-time only; see module header
 
     user_item = sparse.coo_matrix(
         (values, (rows, cols)), shape=(len(user_ids), len(video_ids))
@@ -209,6 +218,8 @@ def build_covisitation(
 
     coo = counts.tocoo()
     norm = np.power(safe_pop[coo.row], damping) * np.power(safe_pop[coo.col], 1.0 - damping)
+    from scipy import sparse            # build-time only; see module header
+
     normalised = sparse.csr_matrix(
         (coo.data / norm, (coo.row, coo.col)), shape=counts.shape
     )

@@ -1,6 +1,11 @@
 # Everything in requirements.txt, plus what only the BUILD pipeline needs:
-# parquet IO, dataframe wrangling, and the YouTube Data API client.
+# model fitting, parquet IO, dataframe wrangling, and the YouTube Data API
+# client. None of this reaches the deployed image -- scripts/12_export_serving.py
+# converts the fitted models into NumPy arrays that serving loads directly.
 -r requirements.txt
+scikit-learn>=1.3
+scipy>=1.11
+joblib>=1.3
 pandas>=2.0
 pyarrow>=14.0
 requests>=2.31
