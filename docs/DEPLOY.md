@@ -96,7 +96,7 @@ python -m uvicorn recsys.api.app:app --app-dir src --port 7860
 | **Render** | Free web service, git-push deploy. Sleeps after 15 min idle, ~50 s cold start. Set `PORT` — the app reads it. |
 | **Railway / Fly.io** | Both take the Dockerfile unchanged. Fly needs `fly launch --dockerfile Dockerfile`. |
 | **Google Cloud Run** | Good fit: `gcloud run deploy --source .`, scales to zero, generous free tier. Set `--memory 1Gi` (artifacts are ~25 MB but pandas/sklearn need headroom). |
-| **Vercel** | Frontend only — the Python API needs a container host. Would require splitting the UI out and handling CORS. |
+| **Vercel** | Where the live demo runs — the whole app, API included, as one serverless function. Needs the NumPy-only serving bundle to fit the size limit, and a rewrite that preserves the path. See [Vercel, specifically](#vercel-specifically). |
 
 Any host that runs a container and gives you a port will work. The app reads `PORT` from the
 environment and falls back to `serving.port` in `config.yaml`.
@@ -140,3 +140,64 @@ Peak RSS ≈ 350–400 MB with pandas and scikit-learn loaded.
 **Evaluation in the image.** The Docker build runs `--skip-eval` to keep build time down. Run
 `python scripts/05_evaluate.py` locally to reproduce every number in
 [EVALUATION.md](EVALUATION.md).
+
+---
+
+## Vercel, specifically
+
+The live demo is a single Python function serving both the API and the UI. Two
+things about it are non-obvious enough to be worth writing down, because both
+produced deployments that built cleanly and then failed at request time.
+
+### 1. The bundle must not need scikit-learn
+
+Vercel's Python runtime prunes files when a bundle exceeds the size limit, and
+it decides what is unused by static analysis. Dynamic imports are invisible to
+that. A pickled `HistGradientBoostingClassifier` reaches for a Cython class
+whose `__module__` is the bare name `_loss` while unpickling, so the pruned
+bundle failed with:
+
+```
+ModuleNotFoundError: No module named '_loss'
+```
+
+Pinning scikit-learn does not fix this — the version was never the cause. The
+fix is `scripts/12_export_serving.py`, which converts the trees and the query
+encoder into plain arrays so serving needs NumPy and nothing else. That takes
+the bundle from 339 MB (over, and therefore pruned) to comfortably under, and
+removes the fragile reference at the same time. See
+[`src/recsys/serving/trees.py`](../src/recsys/serving/trees.py).
+
+### 2. The rewrite must carry the path
+
+The obvious catch-all rewrite silently breaks routing:
+
+```json
+{ "source": "/(.*)", "destination": "/api/index" }
+```
+
+Every request then arrives at the function with `scope["path"] == "/api/index"`,
+whatever the client asked for, and FastAPI 404s all of it — including its own
+`/docs` and `/openapi.json`, which is the giveaway that the route table is fine
+and the path is not. The original path is not recoverable from the request
+either: dumping the full ASGI scope and every header from the deployed function
+showed it absent from both. Only the query string survives.
+
+So the destination has to carry it:
+
+```json
+{ "source": "/(.*)", "destination": "/api/index/$1" }
+```
+
+and [`api/index.py`](../api/index.py) strips the `/api/index` prefix back off
+before Starlette's router sees it. The strip is idempotent, so Docker and the
+local dev server — where no rewrite happens — are unaffected.
+
+### Deploying
+
+```bash
+vercel --prod
+```
+
+`vercel.json` pins 1024 MB and a 30 s ceiling. Cold start is a few seconds
+(loading ~28 MB of artifacts); warm requests are the same ~170 ms as local.

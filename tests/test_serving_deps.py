@@ -80,3 +80,32 @@ def test_the_guard_itself_blocks_imports(no_heavy_imports):
     for name in FORBIDDEN:
         with pytest.raises(ModuleNotFoundError):
             __import__(name)
+
+
+def test_vercel_mount_prefix_is_stripped():
+    """The deployed routing depends on this, and nothing else would catch it.
+
+    ``vercel.json`` rewrites every request to ``/api/index/<path>`` because a
+    rewrite to a bare ``/api/index`` loses the path entirely and 404s the whole
+    site. That makes the strip below load-bearing: if it and the rewrite ever
+    disagree, every route breaks at once and only in production.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "api"))
+    try:
+        import index as vercel_entry
+    finally:
+        sys.path.pop(0)
+
+    strip = vercel_entry.strip_mount_prefix
+    assert strip("/api/index") == "/"
+    assert strip("/api/index/") == "/"
+    assert strip("/api/index/api/health") == "/api/health"
+    assert strip("/api/index/static/app.js") == "/static/app.js"
+    # Idempotent for un-rewritten paths, so Docker and `uvicorn` are unaffected.
+    assert strip("/api/health") == "/api/health"
+    assert strip("/") == "/"
+    # A route that merely starts with the same letters must not be mangled.
+    assert strip("/api/indexer") == "/api/indexer"

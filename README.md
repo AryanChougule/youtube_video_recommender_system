@@ -3,7 +3,7 @@
 A three-stage recommender (candidate generation → ranking → policy) built from scratch,
 with a YouTube-inspired testing UI that shows **why** every recommendation appeared.
 
-**Live demo:** _<add your Hugging Face Space URL here>_ · **Docs:** [`docs/`](docs/) · **Course notes:** [`docs/LEARNING_NOTES.md`](docs/LEARNING_NOTES.md)
+**Live demo:** <https://reelrank-one.vercel.app> · **Docs:** [`docs/`](docs/) · **Course notes:** [`docs/LEARNING_NOTES.md`](docs/LEARNING_NOTES.md)
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
