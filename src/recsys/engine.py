@@ -189,9 +189,20 @@ class RecommendationEngine:
         t_policy = (time.perf_counter() - t0) * 1000
 
         score_lookup = {int(i): float(s) for i, s in zip(candidates.indices, ranker_scores)}
+
+        # Per-objective breakdown for the items that actually made the page.
+        # Computed on the final ~24 rather than all ~400 candidates: the panel
+        # only ever shows what shipped, and it keeps the cost negligible.
+        objective_breakdown: dict[int, dict] = {}
+        if self.art.multitask is not None and len(policy.order):
+            final_matrix = self.art.features.build(ctx, policy.order)
+            rows = self.art.multitask.explain_scores(final_matrix, objective_weights)
+            objective_breakdown = {int(i): r for i, r in zip(policy.order, rows)}
+
         mode = self._mode(history, seed_video, query)
         items = self._materialise(policy, candidates, score_lookup,
-                                  rank_history, explain, mode, seed_idx)
+                                  rank_history, explain, mode, seed_idx,
+                                  objective_breakdown, objective_weights)
 
         total_ms = (time.perf_counter() - t_start) * 1000
         return RecommendationResponse(
@@ -290,7 +301,9 @@ class RecommendationEngine:
     # ------------------------------------------------------------------
     def _materialise(self, policy, candidates, score_lookup, hist_idx,
                      explain: bool, mode: str = "personalised",
-                     seed_idx: int | None = None) -> list[RecommendedItem]:
+                     seed_idx: int | None = None,
+                     objective_breakdown: dict | None = None,
+                     objective_weights: dict | None = None) -> list[RecommendedItem]:
         catalog = self.art.catalog
         items: list[RecommendedItem] = []
         for rank, item_idx in enumerate(policy.order):
@@ -307,6 +320,20 @@ class RecommendationEngine:
                               mode, seed_idx)
                 if explain else ("", {})
             )
+            if explain and objective_breakdown and item_idx in objective_breakdown:
+                breakdown = dict(objective_breakdown[item_idx])
+                probabilities = breakdown.pop("_probabilities", {})
+                detail["objectives"] = {
+                    "probabilities": probabilities,
+                    "contributions": breakdown,
+                    "weights": {
+                        k: round(float(v), 4) for k, v in
+                        (self.art.multitask.weights | (
+                            {kk: float(vv) for kk, vv in (objective_weights or {}).items()}
+                        )).items()
+                    },
+                    "total": round(float(sum(breakdown.values())), 4),
+                }
             items.append(RecommendedItem(
                 video_id=str(row["video_id"]),
                 title=str(row["title"]),

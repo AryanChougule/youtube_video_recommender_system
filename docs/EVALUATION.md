@@ -208,6 +208,39 @@ Two things this table shows that NDCG cannot:
 | Intra-list diversity | mean pairwise (1 − cos) | how varied one page is |
 | Serendipity | relevant AND not in the popularity top-K | value beyond the obvious |
 
+## Per-objective ranking metrics
+
+AUC alone was not enough — it measures separation on a fixed label, not whether
+the right video reached the top of a real page. Both are now reported
+(`python scripts/11_evaluate_objectives.py`):
+
+| objective | top-1 | NDCG | MRR | NDCG(satisfaction) |
+|---|---|---|---|---|
+| A. CTR-optimised | 0.1972 | 0.5613 | 0.4243 | 0.3853 |
+| B. Watch-time optimised | 0.1930 | 0.5562 | 0.4183 | 0.3800 |
+| C. Satisfaction-only | 0.1972 | **0.5641** | **0.4278** | **0.3893** |
+| D. Multi-objective (shipped) | 0.1967 | 0.5637 | 0.4272 | 0.3890 |
+
+*NDCG(satisfaction) re-grades the identical ranking by whether the click was
+satisfying rather than by watch fraction.*
+
+And each head used **alone** as a ranker, which is where AUC and ranking
+quality come apart most sharply:
+
+| head | top-1 | NDCG | MRR | AUC (fit) |
+|---|---|---|---|---|
+| satisfied | **0.1973** | **0.5633** | **0.4268** | 0.7376 |
+| click | 0.1930 | 0.5562 | 0.4183 | 0.6627 |
+| liked | 0.1898 | 0.5560 | 0.4177 | 0.7436 |
+| long_watch | 0.1852 | 0.5519 | 0.4128 | 0.8124 |
+| completion | 0.1773 | 0.5390 | 0.3970 | 0.9154 |
+| dismissed | 0.1010 | 0.4669 | 0.3064 | **0.9154** |
+
+**`dismissed` has the highest AUC and the worst ranking.** It separates its rare
+label (0.44% positive) almost perfectly while being nearly useless for ordering a
+page. Reporting AUC alone would have made it look like the best head in the
+system.
+
 ## Latency
 
 p50 ≈ 22 ms end-to-end (recall ~3 ms, ranking ~12 ms, policy ~5 ms), p95 < 30 ms, on one CPU

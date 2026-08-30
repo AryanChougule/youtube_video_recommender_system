@@ -258,6 +258,23 @@ pre.json {
 }
 
 
+/* ---------------- objective breakdown ---------------- */
+.obj-note { font-size: 11.5px; color: var(--text-dimmer); margin: -4px 0 8px; line-height: 1.45; }
+.obj-note code { background: var(--bg-hover); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+.obj-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.obj-table th {
+  text-align: left; font-weight: 500; color: var(--text-dimmer);
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px;
+  padding: 0 8px 5px 0; border-bottom: 1px solid var(--border);
+}
+.obj-table td { padding: 5px 8px 5px 0; border-bottom: 1px solid #232323; }
+.obj-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.obj-table td.neg, .obj-table td.num.neg { color: #ff8a80; }
+.obj-table tfoot td { border-bottom: none; padding-top: 8px; color: var(--text); }
+.obj-table .barcell { width: 92px; padding-right: 0; }
+.minibar { display: block; height: 6px; border-radius: 3px; background: var(--blue); min-width: 2px; }
+.minibar.neg { background: #ff8a80; }
+
 /* ---------------- recommendation lab ---------------- */
 .intent-box {
   background: rgba(179,136,255,.08); border: 1px solid #4a3a6b;

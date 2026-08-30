@@ -1,7 +1,8 @@
 # Test cases
 
 Every case below is **executable**: `python scripts/09_test_cases.py` re-runs all of them and
-prints live system output. Writing them as code rather than prose means they cannot silently
+prints live system output. The intent and objective experiments behind **S9/S10/F8/F9** are
+reproduced by `scripts/10_evaluate_intent.py` and `scripts/11_evaluate_objectives.py`. Writing them as code rather than prose means they cannot silently
 drift from what the system actually does — and the failure cases stay honest, because they are
 re-measured on every run.
 
@@ -155,6 +156,59 @@ crosses categories 60% of the time for this seed, and the recall layer surfaces 
 the exploration relevance floor filter those candidates out before they reach the page. The
 mechanism is identical to **F7**. Fixing one fixes both.
 
+## S9 · Session intent is detected and named
+
+**Expected:** a topically tight session is recognised and labelled for the UI.
+
+```
+5 Food videos:
+  detected : True
+  label    : "weeknight dinner, open crumb, laminated dough"
+  coherence: 0.471   novelty: 0.001   alpha: 0.80
+  blend actually applied to ranking: 0.0   ← detection only, see F8
+
+5 unrelated videos, for contrast:
+  detected : False
+  coherence: 0.031
+```
+
+✅ Coherent sessions get named; scattered ones don't fire. The label is what the
+sidebar shows as **"Current focus"**, which makes the feed legible in a way the
+raw profile vector cannot.
+
+⚠️ Note `blend applied = 0.0`. Detection ships; **blending does not** — see
+**F8** for the measurement that decided this.
+
+## S10 · The objective is switchable at request time
+
+**Expected:** same history, different objective → materially different feed, with
+no retraining.
+
+```
+history: 5 Science & Technology videos
+
+balanced (shipped)   Attention vs Tailwind CSS… | Why Voicing Is Much Harder… | How to Master Embeddings…
+CTR-only             20 Large Language Model…   | Why Voicing Is Much Harder… | 20 CPU Cooler Mistakes…
+satisfaction-only    REST API, Explained Simply | 20 CPU Cooler Mistakes…     | Stop Getting CPU Cooler Wrong
+
+overlap between CTR-only and satisfaction-only top-10:  3/10
+```
+
+And the per-item breakdown that the **"Why this video?"** panel renders:
+
+| objective | P | weight | contribution |
+|---|---|---|---|
+| satisfied | 26.2% | +0.40 | **+0.1048** |
+| click | 49.4% | +0.10 | +0.0494 |
+| long_watch | 1.7% | +0.25 | +0.0042 |
+| dismissed | 1.8% | −0.20 | −0.0036 |
+| | | **value score** | **+0.1568** |
+
+✅ Six calibrated heads over one shared feature matrix; the objective is a
+per-request weighted sum, so the Recommendation Lab changes what the system is
+*for* without touching the models. 7 of 10 slots change between CTR-only and
+satisfaction-only.
+
 ---
 
 # Failure scenarios
@@ -303,6 +357,70 @@ stop exploration showing junk; a per-category floor achieves both. This is the t
 **Severity:** high. It is the difference between a recommender and an echo chamber, and it is
 the single thing I would fix first with more time.
 
+## F8 · Session-intent blending does not improve ranking
+
+**The product story was right; the mechanism was already implemented.**
+
+```
+Protocol A (re-rank logged impressions)   best gate:  -0.1%
+Protocol B (1 positive vs 100 negatives)  best gate:  +0.1%
+alpha sweep 0.0 → 1.0                     best alpha:  0.0
+```
+
+❌ Every gating rule (coherence thresholds 0.15–0.30, novelty thresholds,
+conjunctions, continuous blends) nets **negative or zero**.
+
+It *does* behave exactly as predicted per cohort — **+7.5%** on focused,
+off-persona sessions and **−3.4%** on browsing sessions. Browsing sessions are
+the majority and the detector (AUC 0.6165) cannot reliably separate them, so
+the losses cancel the gains.
+
+**Diagnosis:** the profile is already recency-weighted with a half-life of 8
+positions, so `cos(profile, session vector) = 0.803`. Remove the decay and
+blending suddenly works (**+2.6%** on a uniform-mean profile). **Exponential
+recency decay was already a soft session model.**
+
+Turning the slider from 0.0 to 1.0 visibly moves the feed — it just doesn't move
+it in a *better* direction. Full analysis in
+[INTENT_AND_OBJECTIVES.md](INTENT_AND_OBJECTIVES.md).
+
+**Severity:** none to the product (shipped off). High value as a lesson: before
+adding a mechanism, check whether a simpler one already covers it.
+
+## F9 · Multi-objective ranking cannot reduce clickbait exposure
+
+Every head fits well:
+
+```
+click 0.6627 · long_watch 0.8124 · completion 0.9154
+liked 0.7436 · satisfied 0.7376 · dismissed 0.9154        (AUC)
+```
+
+Yet clickbait exposure barely moves:
+
+```
+CTR-optimised    clickbait@1 = 0.2059
+multi-objective  clickbait@1 = 0.2048   (-0.5%)
+```
+
+❌ **Why — can any model see clickbait from the served features?**
+
+| target | GBDT R² from all item features |
+|---|---|
+| `latent_quality` | **+0.6355** (visible) |
+| `latent_clickbait` | **−0.1122** (invisible) |
+
+R² below zero is worse than predicting the mean. **No ranker can optimise an
+objective absent from its inputs.** This is exactly why YouTube runs user
+*surveys* rather than inferring satisfaction from engagement metadata — the next
+step here is a **feature** problem, not a model problem.
+
+✅ **What multi-objective ranking does buy, measured:** completion@1 rises
+0.0055 → 0.0100 (**+82%**), plus per-request controllability (**S10**).
+
+**Severity:** moderate — a genuine ceiling, correctly diagnosed, with a clear
+next action (title-vs-content mismatch signals, early-abandon rates).
+
 ---
 
 ## Automated coverage
@@ -318,5 +436,8 @@ actually occurred:
 | `test_explanations_do_not_claim_a_profile_that_does_not_exist` | explanations misdescribing their own evidence |
 | `test_ground_truth_never_leaks_into_the_response` | `latent_quality` reaching the API payload |
 | `test_cf_was_trained_under_the_declared_temporal_cutoff` | the leakage in EVALUATION.md Finding 1 |
+| `test_intent_blend_falls_back_to_the_profile_when_incoherent` | a scattered session hijacking the query |
+| `test_intent_never_fully_overrides_the_profile` | five clicks outweighing a whole history |
+| `test_clickbait_is_generated_and_depresses_the_like_rate` | the wedge that makes multi-objective meaningful |
 | `test_all_artifacts_agree_on_catalog_size` | silent row-order drift between artifacts |
 | `test_latency_is_within_budget` | p95 regression above 250 ms |

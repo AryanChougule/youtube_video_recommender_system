@@ -221,6 +221,39 @@ function renderDiagnostics(res) {
 
 /* ---------------------------------------------------------------- modals */
 
+function objectivesHTML(obj) {
+  if (!obj || !obj.probabilities) return '';
+  const names = Object.keys(obj.probabilities);
+  // Sort by absolute contribution: the reader wants to know what actually
+  // drove the score, not the declaration order of the heads.
+  names.sort((a, b) => Math.abs(obj.contributions[b]) - Math.abs(obj.contributions[a]));
+  const peak = Math.max(...names.map((k) => Math.abs(obj.contributions[k]))) || 1;
+  const rows = names.map((k) => {
+    const p = obj.probabilities[k], w = obj.weights[k] ?? 0, c = obj.contributions[k];
+    const pct = Math.round((Math.abs(c) / peak) * 100);
+    const neg = c < 0;
+    return `<tr>
+      <td>${esc(k.replace(/_/g, ' '))}</td>
+      <td class="num">${(p * 100).toFixed(1)}%</td>
+      <td class="num ${w < 0 ? 'neg' : ''}">${w >= 0 ? '+' : ''}${w.toFixed(2)}</td>
+      <td class="num ${neg ? 'neg' : ''}"><b>${c >= 0 ? '+' : ''}${c.toFixed(4)}</b></td>
+      <td class="barcell"><span class="minibar ${neg ? 'neg' : ''}" style="width:${pct}%"></span></td>
+    </tr>`;
+  }).join('');
+  return `
+    <h4>Stage 2 &mdash; objective breakdown</h4>
+    <p class="obj-note">Six calibrated heads over one shared feature matrix.
+      The value score is <code>&Sigma; weight &times; P(outcome)</code>; the
+      weights are live in the Recommendation Lab.</p>
+    <table class="obj-table">
+      <thead><tr><th>objective</th><th class="num">P</th><th class="num">weight</th>
+        <th class="num">contribution</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="3">value score</td>
+        <td class="num"><b>${obj.total.toFixed(4)}</b></td><td></td></tr></tfoot>
+    </table>`;
+}
+
 function openExplain(idx) {
   const item = state.lastResponse.items[idx];
   const d = item.explanation_detail || {};
@@ -235,6 +268,7 @@ function openExplain(idx) {
     </div>
     <h4>Stage 1 &mdash; which recall sources proposed it</h4>
     <div class="diag">${rows || '<div class="empty-note">No source data.</div>'}</div>
+    ${objectivesHTML(d.objectives)}
     <h4>Stage 2 &mdash; ranker</h4>
     <div class="diag">
       <div class="diag-row"><span>Ranker score (expected-watch-time odds)</span><span>${item.ranker_score}</span></div>

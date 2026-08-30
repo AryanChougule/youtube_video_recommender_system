@@ -14,6 +14,8 @@ import _bootstrap  # noqa: F401
 import numpy as np
 import pandas as pd
 
+import joblib
+
 from recsys.artifacts import load_artifacts
 from recsys.config import Paths, load_config
 from recsys.engine import RecommendationEngine
@@ -146,6 +148,48 @@ def main() -> None:
     else:
         print("  (no hardware-flavoured Gaming videos in this catalog build)")
 
+    head("S9", "Session intent is detected and named",
+         "a topically tight session should be recognised and labelled for the UI")
+    focused = ids("Food", 5)
+    res = engine.recommend(history=focused, n=8)
+    si = res.diagnostics["session_intent"]
+    print(f"  detected : {si['detected']}")
+    print(f"  label    : {si['label']}")
+    print(f"  coherence: {si['coherence']}   novelty: {si['novelty']}   alpha: {si['alpha']}")
+    print(f"  blend actually applied to ranking: {res.diagnostics['intent_applied']} "
+          f"(0 = detection only; see F8)")
+    scattered = [v for c in ["Music", "Finance", "Sports", "Travel", "Education"]
+                 for v in ids(c, 1)]
+    si2 = engine.recommend(history=scattered, n=8).diagnostics["session_intent"]
+    print(f"\n  scattered session for contrast: detected={si2['detected']} "
+          f"coherence={si2['coherence']} label='{si2['label']}'")
+    print("  -> a browsing session scores lower coherence, so alpha stays low")
+
+    head("S10", "The objective is switchable at request time",
+         "same history, different objective -> materially different feed, no retraining")
+    hist = ids("Science & Technology", 5)
+    presets = {
+        "balanced (shipped)": None,
+        "CTR-only": {"click": 1.0},
+        "satisfaction-only": {"satisfied": 1.0},
+    }
+    tops = {}
+    for name, w in presets.items():
+        r = engine.recommend(history=hist, n=10, objective_weights=w)
+        tops[name] = [i.video_id for i in r.items]
+        print(f"  {name:<22} top-3: " +
+              " | ".join(i.title[:30] for i in r.items[:3]))
+    a, b = set(tops["CTR-only"][:10]), set(tops["satisfaction-only"][:10])
+    print(f"\n  overlap between CTR-only and satisfaction-only top-10: {len(a & b)}/10")
+    detail = engine.recommend(history=hist, n=3).items[0].explanation_detail
+    obj = detail.get("objectives")
+    if obj:
+        print("\n  per-item objective breakdown IS exposed (rendered in the UI panel):")
+        for k in sorted(obj["contributions"], key=lambda k: -abs(obj["contributions"][k]))[:4]:
+            print(f"    {k:<12} P={obj['probabilities'][k]:.3f} "
+                  f"x weight {obj['weights'][k]:+.2f} = {obj['contributions'][k]:+.4f}")
+        print(f"    {'TOTAL':<12} {obj['total']:+.4f}")
+
     print(f"\n\n{RULE}\nFAILURE SCENARIOS  (documented, not hidden)")
 
     head("F1", "Cold ITEM - a video nobody has ever watched",
@@ -217,6 +261,45 @@ def main() -> None:
     print("  This is a property of logged data, not of this model. Protocol A in")
     print("  docs/EVALUATION.md is the counterfactually valid view, and there the")
     print("  learned ranker leads every genuine model (top-1 0.2240 vs 0.1385 popularity).")
+
+    head("F8", "Session-intent blending does not improve ranking",
+         "the product story is right, but the mechanism was already implemented")
+    print("  Measured in scripts/10_evaluate_intent.py:")
+    print("    Protocol A (re-rank logged impressions)   best gate:  -0.1%")
+    print("    Protocol B (1 positive vs 100 negatives)  best gate:  +0.1%")
+    print("    alpha sweep 0.0 -> 1.0                    best alpha:  0.0")
+    print("\n  It DOES help the cohort it should (+7.5% on focused off-persona")
+    print("  sessions) and hurts browsing sessions (-3.4%), which are the majority.")
+    print("\n  WHY: the profile is already recency-weighted (half-life 8), so")
+    print("       cos(profile, session vector) = 0.803. Remove the decay and")
+    print("       blending suddenly works (+2.6% on a uniform-mean profile).")
+    print("       Exponential recency decay was already a soft session model.")
+    focused = ids("Food", 5)
+    off = engine.recommend(history=focused, n=10, intent_alpha_scale=0.0)
+    on = engine.recommend(history=focused, n=10, intent_alpha_scale=1.0)
+    shared = len({i.video_id for i in off.items} & {i.video_id for i in on.items})
+    print(f"\n  blending off vs fully on: {shared}/10 items unchanged "
+          f"-> it moves the feed, it just does not move it in a BETTER direction")
+
+    head("F9", "Multi-objective ranking cannot reduce clickbait exposure",
+         "you cannot optimise for something your features cannot see")
+    multi = joblib.load(Paths.multitask_ranker)
+    print("  Per-head fit quality (AUC):")
+    for k, v in multi.metrics.per_task_auc.items():
+        print(f"    {k:<12} {v:.4f}")
+    print("\n  Yet clickbait exposure barely moves between objectives:")
+    print("    CTR-optimised    clickbait@1 = 0.2059")
+    print("    multi-objective  clickbait@1 = 0.2048   (-0.5%)")
+    print("\n  WHY -- can any model see clickbait from the served features?")
+    print("    GBDT R2 predicting latent_quality  = +0.6355   (visible)")
+    print("    GBDT R2 predicting latent_clickbait = -0.1122  (INVISIBLE)")
+    print("\n  R2 below zero means worse than predicting the mean. No ranker can")
+    print("  optimise an objective absent from its inputs. This is exactly why")
+    print("  YouTube runs user SURVEYS rather than inferring satisfaction from")
+    print("  engagement metadata -- the next step is features, not model.")
+    print("\n  What multi-objective ranking DOES buy, measured:")
+    print("    completion@1  0.0055 (CTR-optimised) -> 0.0100 (multi)  +82%")
+    print("    plus per-request controllability (see S10)")
 
     print(f"\n{RULE}\nDone.")
 
