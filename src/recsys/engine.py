@@ -119,7 +119,8 @@ class RecommendationEngine:
 
         # ---- Stage 1: recall ----
         t0 = time.perf_counter()
-        results = self._recall(hist_idx, weights, seed_idx, query, exclude)
+        results, query_matched = self._recall(
+            hist_idx, weights, seed_idx, query, exclude)
         candidates = reciprocal_rank_fusion(
             results, weights=cfg.recall.weights, rrf_k=cfg.recall.rrf_k,
             max_candidates=cfg.recall.max_candidates,
@@ -218,7 +219,12 @@ class RecommendationEngine:
             },
             diagnostics={**self._diagnostics(policy.order),
                          "session_intent": intent.to_dict(),
-                         "intent_applied": round(scale, 3)},
+                         "intent_applied": round(scale, 3),
+                         # False only when a text query matched no vocabulary
+                         # term. The caller must be able to tell "here are your
+                         # results" from "we found nothing, here is what is
+                         # trending" -- they look identical otherwise.
+                         "query_matched": bool(query_matched)},
         )
 
     def similar(self, video_id: str, n: int = 12) -> RecommendationResponse:
@@ -232,18 +238,35 @@ class RecommendationEngine:
     # ------------------------------------------------------------------
     # stages
     # ------------------------------------------------------------------
-    def _recall(self, hist_idx, weights, seed_idx, query, exclude) -> dict:
+    def _recall(self, hist_idx, weights, seed_idx, query,
+                exclude) -> tuple[dict, bool]:
+        """Run every applicable recall source.
+
+        Returns the per-source results and whether a text query actually
+        matched anything -- ``True`` when there was no query, since "did the
+        search find something" is vacuously satisfied if nobody searched.
+        """
         cfg = self.cfg
         art = self.art
         results: dict = {}
+        query_matched = True
 
         if query:
             # Search is intent-dominant: the query is a far stronger statement
             # of what someone wants right now than their long-run history, so
             # it leads and personalisation only re-ranks around it.
-            results["content_history"] = art.content.search(
-                query, k=cfg.recall.content_k, exclude=exclude
-            )
+            hits = art.content.search(query, k=cfg.recall.content_k, exclude=exclude)
+            if len(hits.indices):
+                results["content_history"] = hits
+            else:
+                # No in-vocabulary term: nothing was retrieved, and pretending
+                # otherwise would be the worst outcome -- an all-zero score
+                # vector ranks by tie-break order, so arbitrary videos would be
+                # presented as search results. Fall back to trending and report
+                # the miss, so the response can say "no match" instead of
+                # implying these videos answer the query. See F10 in
+                # docs/TEST_CASES.md.
+                query_matched = False
         elif seed_idx is not None:
             results["content_history"] = art.content.similar_items(
                 seed_idx, k=cfg.recall.content_k, exclude=exclude
@@ -274,9 +297,9 @@ class RecommendationEngine:
         # would otherwise never surface, because nothing in the history points
         # at a video uploaded this morning.
         results["trending"] = art.trending.trending(k=cfg.recall.trending_k, exclude=exclude)
-        if not hist_idx and seed_idx is None and not query:
+        if (not hist_idx and seed_idx is None and not query) or not query_matched:
             results["popular"] = art.trending.popular(k=cfg.recall.trending_k, exclude=exclude)
-        return results
+        return results, query_matched
 
     def _rank(self, ctx, candidates: CandidateSet,
               objective_weights: dict[str, float] | None = None) -> np.ndarray:

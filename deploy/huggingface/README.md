@@ -27,6 +27,13 @@ rank, what the ranker scored it, and which policy rules fired.
 | **2 · Ranking** | Gradient-boosted model over 19 features; positives weighted by watch time so the odds estimate *expected watch time*, not click probability | ~12 ms |
 | **3 · Policy** | MMR diversity, hard channel cap, freshness boost, reserved exploration slots | ~5 ms |
 
+Stage 2 also runs **six calibrated objective heads** — click, long-watch, completion, liked,
+satisfied and dismissed — over the same feature matrix, combined by weights chosen *per
+request*. The **Recommendation Lab** in the sidebar changes those weights live, so the
+system's objective can be switched from engagement-maximising to satisfaction-maximising with
+no retraining. Every card's "Why this video?" panel shows all six probabilities with their
+weights and contributions.
+
 ## Important: the interactions are simulated
 
 No public dataset of real YouTube watch histories exists — watch history is among the most

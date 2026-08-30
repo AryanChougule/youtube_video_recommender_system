@@ -37,6 +37,7 @@ import numpy as np
 import pandas as pd
 
 from recsys.artifacts import load_artifacts
+from recsys.groundtruth import load_latent
 from recsys.config import Paths, load_config
 from recsys.counterfactual import replay_test_feeds
 from recsys.metrics import dcg
@@ -59,8 +60,11 @@ def main() -> None:
     catalog = art.catalog
     split = temporal_split(interactions, test_size=cfg.ranker.test_size)
 
-    clickbait = (catalog["latent_clickbait"].to_numpy(dtype=np.float64)
-                 if "latent_clickbait" in catalog.columns else np.zeros(len(catalog)))
+    # NOT catalog["latent_clickbait"] -- the serving catalog excludes hidden
+    # generative variables by construction. This used to fall back to zeros when
+    # the column was absent, which turned the entire clickbait comparison into
+    # "0.0000 for every strategy" without failing. load_latent raises instead.
+    clickbait = load_latent("latent_clickbait", len(catalog))
 
     print("=" * 78)
     print("DOES MULTI-OBJECTIVE RANKING BEAT A SINGLE METRIC?")
@@ -180,6 +184,12 @@ def main() -> None:
         print(f"    {task:<26}{m['top1']:>10.4f}{m['ndcg']:>10.4f}"
               f"{m['mrr']:>10.4f}{auc:>11.4f}")
     results["_per_head"] = per_head
+    # Persist the fitted AUCs next to the ranking metrics. Without this the
+    # AUC-vs-ranking comparison in docs/EVALUATION.md -- the point of this
+    # whole script -- would cite numbers that live only in a gitignored
+    # joblib, so a reviewer could read the claim but not check it.
+    results["_per_head_auc"] = {t: round(float(a), 4)
+                                for t, a in multi.metrics.per_task_auc.items()}
 
     print("\n    AUC measures separation on a fixed label; the ranking columns")
     print("    measure whether the right video reached the top of a real page.")

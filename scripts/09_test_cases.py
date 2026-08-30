@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import _bootstrap  # noqa: F401
 
+import json
+import re
+
 import numpy as np
 import pandas as pd
 
@@ -53,7 +56,10 @@ def main() -> None:
 
     def ids(category: str, n: int, offset: int = 0) -> list[str]:
         subset = catalog[catalog["category"] == category]
-        subset = subset.nlargest(min(200, len(subset)), "view_count").iloc[offset:offset + n]
+        # iloc_slice, not .iloc -- the serving catalog is a CatalogView, not a
+        # DataFrame (it is pandas-free so the deployed bundle stays small).
+        subset = subset.nlargest(min(200, len(subset)), "view_count")
+        subset = subset.iloc_slice(offset, offset + n)
         return subset["video_id"].tolist()
 
     print(RULE)
@@ -84,15 +90,15 @@ def main() -> None:
 
     head("S5", "Watch page - 'more like this'",
          "topically coherent rail, seed video excluded, no personalisation")
-    seed = catalog[catalog["category"] == "Finance"]["video_id"].iloc[3]
-    print(f"  SEED: {catalog[catalog.video_id == seed].title.iloc[0]}\n")
+    seed = str(catalog[catalog["category"] == "Finance"]["video_id"][3])
+    print(f"  SEED: {catalog['title'][art.idx(seed)]}\n")
     show(engine, engine.similar(seed, n=6), limit=6)
 
     head("S6", "Channel affinity",
          "watching 3 videos from one creator should surface more from that creator")
-    channel = catalog["channel_id"].value_counts().index[0]
+    channel = catalog.value_counts_index("channel_id")[0]
     from_channel = catalog[catalog["channel_id"] == channel]["video_id"].head(3).tolist()
-    name = catalog[catalog["channel_id"] == channel]["channel_title"].iloc[0]
+    name = catalog[catalog["channel_id"] == channel]["channel_title"][0]
     res = engine.recommend(history=from_channel, n=12)
     same = sum(i.channel_id == channel for i in res.items)
     print(f"  watched 3 from '{name}'\n")
@@ -115,20 +121,22 @@ def main() -> None:
          "a GAMING history about PC hardware should leak into Tech / Science, "
          "because pc_hardware is a shared micro-topic")
     hardware = "GPU|RTX|Motherboard|CPU Cooler|Overclocking|DDR5|Power Supply|Custom Loop|Airflow"
+    pattern = re.compile(hardware, re.IGNORECASE)
     hw_gaming = catalog[(catalog["category"] == "Gaming")
-                        & catalog["title"].str.contains(hardware, case=False, na=False)]
+                        & np.array([bool(pattern.search(str(t)))
+                                    for t in catalog["title"]])]
     hw_ids = hw_gaming["video_id"].head(5).tolist()
     if hw_ids:
         print(f"  seeded with {len(hw_ids)} GAMING videos about PC hardware:")
         for v in hw_ids[:3]:
-            print(f"    - {catalog[catalog.video_id == v].title.iloc[0][:60]}")
+            print(f"    - {catalog['title'][art.idx(v)][:60]}")
 
         # (a) At the RECALL layer, where the bridge lives.
         probe = art.idx(hw_ids[1])
         print(f"\n  (a) RECALL layer -- ALS neighbours of "
-              f"'{catalog.iloc[probe].title[:44]}':")
+              f"'{catalog['title'][probe][:44]}':")
         for i in art.als.similar_items(probe, k=6).indices:
-            print(f"        [{engine.category_of[int(i)]:<20}] {catalog.iloc[int(i)].title[:44]}")
+            print(f"        [{engine.category_of[int(i)]:<20}] {catalog['title'][int(i)][:44]}")
         for name, source in (("ALS", art.als), ("content", None)):
             if name == "ALS":
                 idx = art.als.similar_items(probe, k=20).indices
@@ -202,20 +210,20 @@ def main() -> None:
           f"({no_neighbours / len(catalog):.0%})")
     if cold_items:
         idx = art.idx(cold_items[0])
-        print(f"\n  probe: {catalog.iloc[idx].title[:60]}")
+        print(f"\n  probe: {catalog['title'][idx][:60]}")
         print(f"    co-visitation neighbours : {int((art.covisitation.scores[idx] > 0).sum())}")
         print(f"    ALS factor norm          : {np.linalg.norm(art.als.item_factors[idx]):.4f} "
               f"(catalog median {np.median(np.linalg.norm(art.als.item_factors, axis=1)):.4f})")
         similar = art.content.similar_items(idx, k=3)
         print("    content recall still works:")
         for i in similar.indices:
-            print(f"      - {catalog.iloc[int(i)].title[:56]}")
+            print(f"      - {catalog['title'][int(i)][:56]}")
 
     head("F2", "Single-video history - almost no signal",
          "one watch cannot separate 'this topic' from 'this format'; expect wobble")
     single = ids("Travel", 1)
     res = engine.recommend(history=single, n=8)
-    print(f"  watched: {catalog[catalog.video_id == single[0]].title.iloc[0][:60]}\n")
+    print(f"  watched: {catalog['title'][art.idx(single[0])][:60]}\n")
     show(engine, res, note=f"Travel share = {category_share(res, 'Travel'):.0%}")
 
     head("F3", "Contradictory history - 6 unrelated categories",
@@ -244,8 +252,8 @@ def main() -> None:
     mix = res.diagnostics["category_mix"]
     print(f"  category mix from a 5-video Gaming history: {mix}")
     print(f"  distinct categories: {res.diagnostics['distinct_categories']} of 13")
-    cands = engine._recall([art.idx(v) for v in ids("Gaming", 5)],
-                           [1.0] * 5, None, None, [])
+    cands, _ = engine._recall([art.idx(v) for v in ids("Gaming", 5)],
+                              [1.0] * 5, None, None, [])
     trending_cats = {engine.category_of[int(i)] for i in cands["trending"].indices[:40]}
     print("\n  WHY: recall DOES contain other categories -- trending alone contributes")
     print(f"  {len(trending_cats)} distinct categories. But those candidates score low, and")
@@ -288,8 +296,14 @@ def main() -> None:
     for k, v in multi.metrics.per_task_auc.items():
         print(f"    {k:<12} {v:.4f}")
     print("\n  Yet clickbait exposure barely moves between objectives:")
-    print("    CTR-optimised    clickbait@1 = 0.2059")
-    print("    multi-objective  clickbait@1 = 0.2048   (-0.5%)")
+    # Read from the committed report rather than hardcoding, so this cannot
+    # drift from artifacts/objective_evaluation.json the way it once did.
+    obj = json.loads((Paths.artifacts / "objective_evaluation.json").read_text(encoding="utf-8"))
+    ctr_bait = obj["A. CTR-optimised"]["clickbait@1"]
+    multi_bait = obj["D. Multi-objective"]["clickbait@1"]
+    print(f"    CTR-optimised    clickbait@1 = {ctr_bait:.4f}")
+    print(f"    multi-objective  clickbait@1 = {multi_bait:.4f}   "
+          f"({multi_bait / ctr_bait - 1:+.1%})")
     print("\n  WHY -- can any model see clickbait from the served features?")
     print("    GBDT R2 predicting latent_quality  = +0.6355   (visible)")
     print("    GBDT R2 predicting latent_clickbait = -0.1122  (INVISIBLE)")
@@ -300,6 +314,26 @@ def main() -> None:
     print("\n  What multi-objective ranking DOES buy, measured:")
     print("    completion@1  0.0055 (CTR-optimised) -> 0.0100 (multi)  +82%")
     print("    plus per-request controllability (see S10)")
+
+    head("F10", "Out-of-vocabulary search retrieves nothing",
+         "a query matching no catalog term must SAY SO, not rank tie-broken noise")
+    for q in ("brown butter", "machine learning"):
+        vector = art.text_index.encoder.transform([q])[0]
+        hits = art.content.search(q, k=50)
+        res = engine.search(q, n=5)
+        print(f"  query {q!r}")
+        print(f"    ||query vector||  = {float(np.linalg.norm(vector)):.6f}")
+        print(f"    items retrieved   = {len(hits.indices)}")
+        print(f"    query_matched     = {res.diagnostics['query_matched']}")
+        print(f"    top result        = {res.items[0].title[:48]}")
+        print(f"    explanation       = {res.items[0].explanation[:56]}")
+    print("\n  WHY: TF-IDF can only match terms it has seen. A query with no")
+    print("  in-vocabulary token encodes to EXACTLY zero, so every cosine")
+    print("  similarity ties at 0.0 and the 'ranking' is tie-break order --")
+    print("  output shaped like a result list, carrying no information.")
+    print("\n  The system now detects that, falls back to trending, and labels")
+    print("  the response. The retrieval limit is structural; presenting it as")
+    print("  a successful search was the actual bug.")
 
     print(f"\n{RULE}\nDone.")
 

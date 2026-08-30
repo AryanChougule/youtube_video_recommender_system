@@ -144,7 +144,7 @@ median (for numerical comfort) changes nothing.
   time. The engine scores all 6,000 items, most of which look nothing like a logged impression.
 
 Trained only on in-feed negatives, the model is out-of-distribution when scoring the full
-catalog. Adding random negatives moved AUC 0.643 → **0.697** and weighted AUC 0.747 → **0.790**
+catalog. Adding random negatives raised AUC and weighted AUC together in the development run that motivated the change; the shipped model measures **AUC 0.6627 / weighted AUC 0.7553** ([`ranker_report.json`](../artifacts/ranker_report.json))
 (Yi et al., *Mixed Negative Sampling*, 2019).
 
 Using *only* random negatives — the common shortcut — would be worse than either: it trains the

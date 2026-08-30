@@ -32,6 +32,7 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score
 
 from recsys.artifacts import load_artifacts
+from recsys.groundtruth import load_latent
 from recsys.config import Paths, load_config
 from recsys.data.simulator import (
     CLICK_BIAS, W_AFFINITY, W_DURATION_FIT, W_POPULARITY, W_QUALITY,
@@ -117,7 +118,7 @@ def main() -> None:
 
     views = art.catalog["view_count"].to_numpy(dtype=float)
     log_views_z = zscore(np.log1p(views))
-    quality = art.catalog["latent_quality"].to_numpy(dtype=float)
+    quality = load_latent("latent_quality", len(art.catalog))
     quality_z = zscore(np.log(quality))
     duration_min = art.catalog["duration_seconds"].to_numpy(dtype=float) / 60.0
     mainstream = users["mainstream"].to_numpy()

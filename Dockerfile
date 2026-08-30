@@ -1,11 +1,16 @@
 # ---------------------------------------------------------------------------
 # ReelRank - YouTube-style recommender
 #
-# The image contains NO deep-learning framework. Every model is either NumPy /
-# scikit-learn or hand-written (ALS, co-visitation, MMR, the ANN search), and
-# the text encoder is fitted offline and served as a plain matrix. Result: a
-# ~450MB image instead of the ~2.5GB a torch-based build would need, which
-# matters on a free Hugging Face Space.
+# The image contains NO deep-learning framework. Every model is either
+# hand-written (ALS, co-visitation, MMR, the nearest-neighbour search) or a
+# scikit-learn GBDT that is EXPORTED TO NUMPY ARRAYS at build time, so the
+# running server imports neither scikit-learn nor pandas. Result: a ~450MB
+# image instead of the ~2.5GB a torch-based build would need.
+#
+# scikit-learn and pandas are still installed here because this image BUILDS
+# the artifacts (that is what requirements-build.txt is for). They are simply
+# not on the serving path -- see src/recsys/serving/ and, for the deployment
+# failure that motivated the split, src/recsys/serving/trees.py.
 #
 # Artifacts are BUILT AT IMAGE BUILD TIME (deterministic from config.yaml +
 # seed), so the container starts serving immediately instead of training on

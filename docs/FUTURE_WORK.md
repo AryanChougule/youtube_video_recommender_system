@@ -61,19 +61,42 @@ patching it.
 
 ---
 
-## P3 — multi-task ranking
+## P3 — ~~multi-task ranking~~ **DONE** → make clickbait visible
 
 **Closes:** [L7](LIMITATIONS.md) · the main capability gap vs YouTube 2019
 
-Predict watch time, completion rate, and like probability jointly with a shared trunk and
-per-task heads, then combine with tuned weights. Watch time alone cannot distinguish *engaged*
-from *unable to look away*.
+**Shipped.** Six calibrated heads (click, long-watch, completion, liked, satisfied, dismissed)
+over one shared feature matrix, combined by weights chosen **per request**; the simulator emits
+dismissals and a survey-like satisfaction signal. Completion@1 rose 0.0055 → 0.0100 (+82%) and
+the objective is switchable live in the UI ([INTENT_AND_OBJECTIVES.md](INTENT_AND_OBJECTIVES.md)).
 
-The simulator already generates `liked` and `watch_fraction`; extending it to emit **dismissals**
-and a **satisfaction survey** signal would let engagement and satisfaction be modelled
-separately — which is exactly the distinction Zhao et al. (2019) built MMoE for.
+**What it did not fix, and what to do instead.** Multi-objective ranking did *not* reduce
+clickbait exposure (0.2057 → 0.2044). The diagnosis is the useful part:
 
-**Effort: 2 days** (plus simulator work).
+| target | GBDT R² from every served feature |
+|---|---|
+| `latent_quality` | **+0.6355** (visible) |
+| `latent_clickbait` | **−0.1122** (invisible) |
+
+**No ranker can optimise an objective absent from its inputs.** So the next step is a *feature*
+problem, not a model problem:
+
+1. **Title-vs-content mismatch** — cosine distance between the title embedding and the
+   description/tag embedding. A title promising something the body does not deliver is the
+   textual signature of clickbait, and it is computable from data already held.
+2. **Early-abandon rate** — the fraction of viewers who leave in the first 10 seconds,
+   conditioned on having clicked. Bait attracts clicks and loses them immediately.
+3. **Title-form features** — all-caps ratio, superlative count, curiosity-gap patterns.
+
+The honest test is whether R² on `latent_clickbait` moves off the floor. If it does, the
+existing objective weights will act on it with no model change at all.
+
+**A shared trunk remains the architectural upgrade.** Six independent GBDTs cannot share
+representation, so correlated tasks re-learn the same structure six times. A Multi-gate MoE
+(Zhao et al., 2019) fixes that — but it needs a neural net and more label volume than one
+simulated stream per outcome provides, so it is not worth doing before the feature work above.
+
+**Effort: 1–2 days** for the features; the MoE is a larger project.
 
 ---
 

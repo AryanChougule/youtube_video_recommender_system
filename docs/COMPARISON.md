@@ -85,8 +85,34 @@ Multi-gate Mixture-of-Experts to stop the objectives fighting each other. They a
 *shallow tower* fed with position and device, explicitly to absorb selection bias.
 
 That architecture exists because watch time alone is a **flawed proxy for satisfaction** — the
-exact weakness I document as [L7](LIMITATIONS.md). Mine is a one-objective system, which is a
-real capability gap and not just a scale difference.
+exact weakness documented as [L7](LIMITATIONS.md).
+
+ReelRank now closes part of that gap and is explicit about the part it does not. It predicts the
+same six-ish objective families — click, long-watch, completion, liked, satisfied, dismissed —
+and combines them with weights, which are chosen **per request** rather than hand-tuned once, so
+an evaluator can change the system's objective live.
+
+What is still genuinely different:
+
+| | YouTube (2019) | ReelRank |
+|---|---|---|
+| Objectives | many, engagement + satisfaction | six, engagement + satisfaction |
+| Architecture | shared-trunk **Multi-gate MoE** | **six independent GBDTs** |
+| Representation sharing | yes — gates route shared experts per task | **no** — each head re-learns the same structure |
+| Weights | hand-tuned, fixed at serving | chosen per request, exposed in the UI |
+| Selection bias | a shallow tower fed position + device | IPS weights + a position feature at training time |
+| Satisfaction label | real user **surveys** | a simulated survey-like signal |
+
+The MoE is the right answer at their scale: it lets correlated tasks share representation while
+gating away destructive interference. Six independent GBDTs cannot share anything, so correlated
+tasks re-learn the same structure six times — wasteful, not wrong, and the correct trade at 6k
+items with one simulated label stream per outcome. The honest summary is that the *product*
+capability is reproduced and the *architecture* is deliberately simpler.
+
+The deeper remaining gap is the label, not the model. YouTube asks people whether they were
+satisfied. Inferring satisfaction from engagement metadata has a hard ceiling, which this project
+measures directly: clickbait is invisible to every served feature (R² = −0.11), so no objective
+weighting reduces it ([F9](TEST_CASES.md)).
 
 ---
 
@@ -131,12 +157,90 @@ Ordered by expected value per unit of work:
    large product effect.
 2. **Sequential modelling** — a GRU4Rec/SASRec-style encoder over the watch sequence, replacing
    the recency-weighted mean.
-3. **Multi-task ranking** — predict watch time *and* like-rate *and* completion, then combine.
-   Needs richer labels, which the simulator can already produce.
-4. **Two-tower retrieval with a content-conditioned item tower** — fixes cold items structurally
+3. **Two-tower retrieval with a content-conditioned item tower** — fixes cold items structurally
    (an item's embedding comes from its metadata, so it exists before anyone watches it).
-5. **Thompson sampling** for exploration instead of ε-greedy.
-6. **Neural text embeddings** as default, once image size is not the binding constraint.
+4. **Thompson sampling** for exploration instead of ε-greedy.
+5. **Neural text embeddings** as default, once bundle size is not the binding constraint.
+6. **Title-vs-content mismatch features** — the one change that would make clickbait *visible*
+   to the ranker at all. Currently R² = −0.11 from every served feature, so no objective
+   weighting can touch it ([F9](TEST_CASES.md)). This is a feature problem, not a model problem.
+
+> **Already done since this document was first written:** multi-task ranking now ships — six
+> calibrated heads (click, long-watch, completion, liked, satisfied, dismissed) over one shared
+> feature matrix, with weights chosen per request, and the simulator emits dismissal and
+> survey-like satisfaction signals. See [INTENT_AND_OBJECTIVES.md](INTENT_AND_OBJECTIVES.md).
+> It raises completion@1 from 0.0055 to 0.0100 (+82%) and makes the objective switchable live
+> in the UI. It does **not** reduce clickbait exposure, for the reason in item 6.
+
+---
+
+---
+
+## What a production YouTube-scale system would additionally require
+
+Everything above is about *quality*. This section is about what changes when the
+system is real — serving billions of items to billions of people, continuously.
+None of it is implemented here, and most of it is not implementable at this
+scale; the point of listing it is to be clear about where the boundary is.
+
+**Retrieval at 10⁹ items.** Brute-force nearest-neighbour is *correct* at 6,000
+items — 1.5M multiply-adds, well under a millisecond — and inadmissible at 10⁹.
+Production needs a sharded ANN index (ScaNN/HNSW), an embedding-refresh pipeline,
+and a serving tier that survives index rebuilds without dropping traffic. That is
+an infrastructure project, not a modelling one.
+
+**Real-time feedback.** Here, a click updates the feed on the next request because
+everything is recomputed from scratch in ~22 ms against static artifacts. At scale
+the profile lives in a feature store, the co-visitation counts arrive from a
+streaming aggregation (minutes, not the nightly batch this repo does), and the
+freshness window for a trending video is measured in minutes. Getting "this video
+went viral an hour ago" into recommendations is a data-freshness problem, and it
+is most of the engineering.
+
+**Online learning and continuous training.** This model is trained once against a
+frozen temporal split. Production retrains continuously — often incrementally —
+because the catalog and the audience both drift under it. That brings training/
+serving skew monitoring, feature drift detection, automatic rollback, and the
+question of what to do when a retrain is *worse*, which offline metrics will not
+reliably tell you.
+
+**Contextual bandits for exploration.** The exploration slots here are ε-greedy
+with a relevance floor: simple, and it does not learn from what exploration
+discovers. A production system runs Thompson sampling or LinUCB so exploration
+cost is repaid, and treats the exploration budget itself as a tuned parameter.
+
+**A/B experimentation as the actual arbiter.** Nothing offline settles whether a
+change is good — this repo demonstrates that directly, since two valid-looking
+metric families [disagree about the sign](EVALUATION.md) of adding the ranker.
+Production needs live experiments, interleaving for ranking comparisons,
+sequential testing so experiments can stop early, guardrail metrics, and long-horizon
+holdouts to catch changes that raise engagement this week and lose users next
+quarter.
+
+**Cold-start on all three axes.** New *users* are solved here (ALS fold-in, ~51 µs).
+New *items* are not — collaborative signal is structurally unavailable until
+somebody watches, which a content-conditioned two-tower model fixes ([F1](TEST_CASES.md)).
+New *contexts* — a user's first session on a new device, in a new country — are not
+modelled at all.
+
+**Multimodal understanding.** YouTube sees frames, audio and transcripts. This sees
+titles, tags and descriptions. That gap is why the clickbait ceiling here is a
+feature problem: the mismatch between a thumbnail's promise and a video's content
+is not expressible in the data available.
+
+**Safety, fairness and policy.** The largest gap, and it is not a ranking problem.
+Production needs a borderline-content classifier, authority signals for topics where
+misinformation is costly, creator-exposure fairness constraints (the current Gini of
+0.799 would not be defensible in a real creator ecosystem), age-appropriateness gating,
+and per-user filter-bubble tracking over time rather than per page. A recommender at
+scale is a distribution system with consequences, and none of that follows from
+optimising a value score.
+
+**Operational scale.** Multi-region serving, graceful degradation when a recall
+source is down (this system already degrades to fused recall order without a
+ranker — the right instinct, at toy scale), capacity planning against diurnal
+traffic, and cost-per-request budgets that make a 12 ms ranker a real constraint
+rather than a comfortable one.
 
 ---
 

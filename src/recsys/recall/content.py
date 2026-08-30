@@ -141,7 +141,24 @@ class ContentRecall:
     # -- text -> items ----------------------------------------------------
     def search(self, query: str, k: int = 50,
                exclude: Sequence[int] = ()) -> RecallResult:
+        """Retrieve by semantic similarity to the query.
+
+        Returns an EMPTY result when the query matches no vocabulary term. That
+        case is not hypothetical and it is not a rounding error: a TF-IDF query
+        with no in-vocabulary token produces a vector of exact zeros, every
+        similarity ties at 0.0, and the top-k is then decided by whatever order
+        argpartition happened to leave the ties in. The output looks like a
+        ranked list and carries no information at all.
+
+        Returning nothing is the honest answer, and it lets the caller say so --
+        see RecommendationEngine._recall, which falls back to trending and
+        labels the response rather than silently presenting arbitrary videos as
+        search results. Documented as F10 in docs/TEST_CASES.md.
+        """
         vector = self.index.encode([query])[0]
+        if not np.any(vector):
+            return RecallResult(np.array([], dtype=int), np.array([]),
+                                "content_search")
         idx, scores = self.index.similar_to_vector(vector, k=k, exclude=exclude)
         return RecallResult(idx, scores, "content_search")
 

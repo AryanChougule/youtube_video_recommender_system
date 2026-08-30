@@ -399,8 +399,8 @@ liked 0.7436 · satisfied 0.7376 · dismissed 0.9154        (AUC)
 Yet clickbait exposure barely moves:
 
 ```
-CTR-optimised    clickbait@1 = 0.2059
-multi-objective  clickbait@1 = 0.2048   (-0.5%)
+CTR-optimised    clickbait@1 = 0.2057
+multi-objective  clickbait@1 = 0.2044   (-0.6%)
 ```
 
 ❌ **Why — can any model see clickbait from the served features?**
@@ -423,9 +423,75 @@ next action (title-vs-content mismatch signals, early-abandon rates).
 
 ---
 
+## F10 · Out-of-vocabulary search retrieves nothing
+
+**Input:** search `"machine learning"` against the synthetic catalog.
+
+**Observed (before the fix):** a full page of ranked-looking results, top hit
+*"The Truth About VO2 Max"* — a fitness video, for a machine-learning query.
+
+❌ **Why.** Not noise, and not a bad ranking. The TF-IDF vocabulary is built
+from the catalog, and this catalog has no machine-learning content, so:
+
+```
+query      'machine learning'
+tokens     ['machine', 'learning', 'machine learning']
+in-vocab   []                                    <- none of them
+||vector|| 0.000000                              <- exactly zero
+```
+
+Every cosine similarity is then `0.0`, the scores are all tied, and `argpartition`
+returns whichever items the tie-break happened to leave first. The output has the
+*shape* of a ranked list and contains no information whatsoever.
+
+Compare an in-vocabulary query:
+
+```
+query      'brown butter'
+in-vocab   ['brown', 'butter', 'brown butter']
+||vector|| 0.891757                              -> correct Food results
+```
+
+This is a **known, structural property of lexical retrieval**, not a bug in the
+ranker. TF-IDF can only match terms it has seen. Dense embeddings from a
+sentence transformer would degrade gracefully instead of collapsing to zero —
+that trade-off is [D3](DESIGN_DECISIONS.md), and the upgrade path is in
+[FUTURE_WORK.md](FUTURE_WORK.md).
+
+✅ **Fixed behaviour.** The zero-vector case is now detected rather than ranked:
+
+| | before | after |
+|---|---|---|
+| `ContentRecall.search` | returns 50 tied items | returns **0 items** |
+| feed | unrelated videos, presented as results | falls back to trending |
+| heading | `Results for "machine learning"` | `No matches for "machine learning" — showing trending instead` |
+| API | indistinguishable from success | `diagnostics.query_matched: false` |
+| explanation | *"Matches your search in Howto & Style"* | *"Trending in Education"* |
+
+**Is it expected?** The retrieval failure, yes — a lexical index cannot match
+absent vocabulary. Presenting it as a successful search was not; an unlabelled
+fallback looks identical to a working search that returned poor results, and
+that is the more damaging of the two, because it makes the ranker look broken
+when the retriever simply found nothing.
+
+**Partial matches still work.** `"quantum blockchain nft"` matches only
+`quantum`, keeps `query_matched: true`, and ranks on that one term — correct,
+since the query genuinely did match something.
+
+**How it could be improved:** (1) a dense retriever as a fallback leg so
+semantic matches survive vocabulary gaps; (2) query expansion over the tag
+graph; (3) spelling correction, which would catch the most common real cause of
+a zero-vector query. Regression test:
+`test_out_of_vocabulary_search_reports_no_match`.
+
+**Severity:** low after the fix — the system now reports the limit instead of
+hiding it.
+
+---
+
 ## Automated coverage
 
-45 tests, `python -m pytest tests/ -q`. The interesting ones are regressions for bugs that
+61 tests, `python -m pytest tests/ -q`. The interesting ones are regressions for bugs that
 actually occurred:
 
 | Test | Guards against |
@@ -441,3 +507,9 @@ actually occurred:
 | `test_clickbait_is_generated_and_depresses_the_like_rate` | the wedge that makes multi-objective meaningful |
 | `test_all_artifacts_agree_on_catalog_size` | silent row-order drift between artifacts |
 | `test_latency_is_within_budget` | p95 regression above 250 ms |
+| `test_out_of_vocabulary_search_reports_no_match` | F10 — arbitrary tie-broken results shown as search hits |
+| `test_serving_runs_without_heavy_dependencies` | pandas/sklearn/SciPy creeping back into the deployed path |
+| `test_numpy_export_matches_sklearn` | the exported models drifting from the evaluated ones |
+| `test_vercel_mount_prefix_is_stripped` | a rewrite/strip mismatch 404-ing every route in production |
+| `test_missing_ground_truth_raises_instead_of_defaulting` | hidden variables silently zeroing, reporting clickbait@1 = 0.0000 |
+| `test_recall_reports_whether_a_query_matched` | `_recall`'s contract, unpacked directly by three scripts |

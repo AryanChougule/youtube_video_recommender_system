@@ -186,12 +186,15 @@ def make_scorers(art: Artifacts, include_oracle: bool = False,
         scorers["LEARNED RANKER"] = ranker
 
     if include_oracle and gt_user_topics is not None:
+        from .groundtruth import load_latent
         from .data.simulator import (
             CLICK_BIAS, W_AFFINITY, W_DURATION_FIT, W_POPULARITY, W_QUALITY,
         )
         z = lambda x: (x - x.mean()) / (x.std() or 1.0)  # noqa: E731
         lv = z(np.log1p(art.catalog["view_count"].to_numpy(float)))
-        qz = z(np.log(art.catalog["latent_quality"].to_numpy(float)))
+        # Ground truth comes from the build output, not the serving bundle,
+        # which excludes it by construction. See recsys.groundtruth.
+        qz = z(np.log(load_latent("latent_quality", len(art.catalog))))
         dur = art.catalog["duration_seconds"].to_numpy(float) / 60.0
         mainstream = users_df["mainstream"].to_numpy()
         pref = users_df["preferred_minutes"].to_numpy()

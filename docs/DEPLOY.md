@@ -1,16 +1,88 @@
 # Deployment
 
-The app is a single Docker container: FastAPI serves both the JSON API and the static UI, and
-the models are **built into the image** so the container starts serving immediately rather than
-training on first request.
+**Live:** <https://reelrank-one.vercel.app> — one Python serverless function serving
+both the JSON API and the static UI. Docker and Hugging Face Spaces are supported
+alternatives and are documented below.
 
-Image size ≈ 450 MB. There is no PyTorch, no `faiss`, no `implicit` — every model is NumPy /
-scikit-learn or hand-written, and the text encoder is fitted offline and served as a plain
-matrix ([D3](DESIGN_DECISIONS.md)).
+FastAPI serves the API and the UI from the same process, and the models are **built
+ahead of time** rather than trained on first request, so the app starts serving
+immediately. There is no PyTorch, no `faiss`, no `implicit` — every model is NumPy or
+hand-written ([D3](DESIGN_DECISIONS.md)).
 
 ---
 
-## Recommended: Hugging Face Spaces (free, no credit card, no cold-start penalty)
+## Two environments, two dependency sets
+
+This is the single most important thing to know before running anything, because the
+two requirement files are not interchangeable:
+
+| | file | contains | used by |
+|---|---|---|---|
+| **Build / training** | `requirements-build.txt` | pandas, scikit-learn, SciPy, PyArrow, NumPy, FastAPI | `scripts/build_all.py`, every `scripts/*.py`, the test suite |
+| **Serving / inference** | `requirements.txt` | NumPy, FastAPI, Uvicorn, Pydantic, PyYAML | the deployed app |
+
+`requirements-build.txt` includes `requirements.txt`, so the build set is a superset.
+
+**Running the pipeline needs the build set.** `pip install -r requirements.txt` followed
+by `python scripts/build_all.py` fails at stage 02 — ten of the scripts import pandas or
+scikit-learn.
+
+### Why serving has its own requirements file
+
+Training a gradient-boosted model is hard; evaluating one is not. A fitted
+`HistGradientBoostingClassifier` is, at prediction time, a list of binary trees plus a
+baseline. The histogram binning, the gradient/hessian machinery and the loss objects
+exist only to *fit* it. Likewise, a fitted `TfidfVectorizer → TruncatedSVD` pipeline is,
+at query time, a vocabulary lookup and a matrix multiply.
+
+So the last build stage ([`scripts/12_export_serving.py`](../scripts/12_export_serving.py))
+converts both into plain arrays, and the deployed app loads those instead:
+
+```
+artifacts/serving_models.npz    tree arrays, idf vector, SVD components   15.1 MB
+artifacts/serving_models.json   vocabulary, stop words, objective weights  0.3 MB
+```
+
+Four things this buys, in order of how much they mattered:
+
+1. **It removes a fragile pickle.** A pickled `HistGradientBoostingClassifier` reaches
+   for a Cython class whose `__module__` is the bare string `_loss`, so unpickling needs
+   a top-level `import _loss` to resolve. That works locally by accident of import order.
+   In production it failed outright — see [Vercel, specifically](#vercel-specifically).
+2. **Smaller footprint.** scikit-learn + SciPy + joblib is ~200 MB of Linux wheels;
+   pandas is another ~55 MB. Removing all four took the deployed bundle from 339 MB
+   (over the serverless limit) to comfortably under it.
+3. **More portable inference.** The serving path is NumPy and the standard library. No
+   version-matched unpickling, so artifacts built today load on a future runtime.
+4. **Faster cold start.** Less to import.
+
+**The conversion is verified, not assumed.** The exporter re-scores both paths and
+refuses to write a bundle that disagrees by more than `1e-6`:
+
+| model | max \|sklearn − numpy\| | checked on |
+|---|---|---|
+| ranker (101 trees) | 5.551e-17 | 4,000 feature rows, 5% NaN to exercise missing-value routing |
+| head `click` | 5.551e-17 | as above |
+| head `long_watch` | 1.110e-16 | as above |
+| head `completion` | 5.551e-17 | as above |
+| head `liked` | 2.776e-17 | as above |
+| head `satisfied` | 1.110e-16 | as above |
+| head `dismissed` | 4.337e-19 | as above |
+| text encoder | 1.192e-07 | all 6,000 catalog documents |
+| query vectors | 1.490e-08 | sample queries, top-3 rankings identical |
+
+The trees agree to machine precision because tree inference is exact arithmetic on the
+same thresholds. The encoder's 1.2e-07 is float32 rounding in the SVD component matrix,
+which is stored as float32 deliberately ([D3](DESIGN_DECISIONS.md)) — four orders of
+magnitude below the gap between adjacent candidates, so it cannot reorder a feed.
+
+[`tests/test_serving_deps.py`](../tests/test_serving_deps.py) enforces the split: it
+blocks pandas, scikit-learn, SciPy, joblib and PyArrow at the import hook, then runs a
+real recommendation and a real search.
+
+---
+
+## Alternative: Hugging Face Spaces (free, no credit card, no cold-start penalty)
 
 Free Spaces sleep after ~48 h of inactivity and wake in a few seconds — unlike Render's free
 tier, which sleeps after 15 minutes and takes ~50 s to wake, long enough that an evaluator's
@@ -79,8 +151,12 @@ Open <http://localhost:7860>. Add `-e YOUTUBE_API_KEY=...` at build time to use 
 
 ## Local, no Docker
 
+Building needs `requirements-build.txt` (pandas, scikit-learn, SciPy). Plain
+`requirements.txt` is the **serving** set and deliberately excludes them -- see
+[the NumPy-only serving section](#why-serving-has-its-own-requirements-file).
+
 ```bash
-pip install -r requirements.txt && python scripts/build_all.py
+pip install -r requirements-build.txt && python scripts/build_all.py
 ```
 
 ```bash
@@ -95,7 +171,7 @@ python -m uvicorn recsys.api.app:app --app-dir src --port 7860
 |---|---|
 | **Render** | Free web service, git-push deploy. Sleeps after 15 min idle, ~50 s cold start. Set `PORT` — the app reads it. |
 | **Railway / Fly.io** | Both take the Dockerfile unchanged. Fly needs `fly launch --dockerfile Dockerfile`. |
-| **Google Cloud Run** | Good fit: `gcloud run deploy --source .`, scales to zero, generous free tier. Set `--memory 1Gi` (artifacts are ~25 MB but pandas/sklearn need headroom). |
+| **Google Cloud Run** | Good fit: `gcloud run deploy --source .`, scales to zero, generous free tier. Set `--memory 512Mi` (artifacts ~28 MB; serving is NumPy-only, so peak RSS is ~200 MB). |
 | **Vercel** | Where the live demo runs — the whole app, API included, as one serverless function. Needs the NumPy-only serving bundle to fit the size limit, and a rewrite that preserves the path. See [Vercel, specifically](#vercel-specifically). |
 
 Any host that runs a container and gives you a port will work. The app reads `PORT` from the
@@ -129,13 +205,15 @@ request), and thread contention makes a single solve ~70× slower
 uvicorn recsys.api.app:app --app-dir src --workers 4
 ```
 
-Each worker loads its own ~25 MB of artifacts. Budget ~400 MB RSS per worker.
+Each worker loads its own ~28 MB of artifacts. Budget ~200 MB RSS per worker.
 
 **Statelessness.** No sessions, no database. Any number of replicas behind a load balancer works
 with no shared state.
 
-**Memory.** Artifacts total ~25 MB (item vectors 6 MB, text encoder 14 MB, ALS factors 4 MB).
-Peak RSS ≈ 350–400 MB with pandas and scikit-learn loaded.
+**Memory.** Artifacts total ~28 MB (serving models 15 MB, item vectors 6 MB, ALS factors
+4 MB, catalog 2.5 MB). Serving imports only NumPy, so peak RSS is ~150–200 MB — the
+Docker image still carries scikit-learn because it *builds* the artifacts at image build
+time, but the running server never imports it.
 
 **Evaluation in the image.** The Docker build runs `--skip-eval` to keep build time down. Run
 `python scripts/05_evaluate.py` locally to reproduce every number in

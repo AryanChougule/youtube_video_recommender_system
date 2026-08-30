@@ -135,7 +135,7 @@ production deploy, and records that fact so the metrics are flagged as invalid.
 **Rejected:** in-feed only; random only.
 
 **Why:** in-feed negatives alone leave the model out-of-distribution when scoring the full
-catalog at serving time. Adding random negatives moved AUC 0.643 → 0.697.
+catalog at serving time. Adding random negatives raised AUC in the development run that motivated the change; the shipped model measures AUC 0.6627 ([`ranker_report.json`](../artifacts/ranker_report.json)).
 
 ---
 

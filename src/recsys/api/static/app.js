@@ -427,14 +427,26 @@ async function refresh() {
     if (state.category) items = items.filter((i) => i.category === state.category);
 
     const mode = res.request.mode;
+    // A search that matched no vocabulary term retrieves nothing, so the feed
+    // falls back to trending. Say so: an unlabelled fallback looks identical to
+    // a working search that returned bad results, and that is the more
+    // damaging of the two failures. See F10 in docs/TEST_CASES.md.
+    const missed = mode === 'search' && res.diagnostics
+      && res.diagnostics.query_matched === false;
     const titles = {
       cold_start: 'Trending now',
       personalised: 'Recommended for you',
-      search: `Results for "${state.query}"`,
+      search: missed
+        ? `No matches for "${state.query}" — showing trending instead`
+        : `Results for "${state.query}"`,
       watch_page: 'Up next',
     };
-    const sub = `${mode.replace('_', ' ')} &middot; ${res.stages.n_candidates} candidates `
+    let sub = `${mode.replace('_', ' ')} &middot; ${res.stages.n_candidates} candidates `
       + `&rarr; ${res.items.length} shown &middot; ${res.stages.total_ms} ms`;
+    if (missed) {
+      sub += ' &middot; <strong>no catalog term matched your query</strong>, '
+        + 'so nothing was retrieved by search';
+    }
     $('feed-sub').innerHTML = sub;
     renderFeed(items, titles[mode] || 'Recommended', '');
     $('feed-sub').innerHTML = sub;

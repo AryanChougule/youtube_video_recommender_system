@@ -98,7 +98,7 @@ def main() -> None:
     # Stage 1 only: fused recall, no learned ranker, no policy.
     def recall_only(user: EvalUser, k: int):
         from recsys.recall.blend import reciprocal_rank_fusion
-        results_map = engine._recall(user.history, user.weights, None, None, user.history)
+        results_map, _ = engine._recall(user.history, user.weights, None, None, user.history)
         fused = reciprocal_rank_fusion(
             results_map, weights=cfg.recall.weights, rrf_k=cfg.recall.rrf_k,
             max_candidates=cfg.recall.max_candidates)
