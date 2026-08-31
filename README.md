@@ -568,6 +568,7 @@ scripts/
   04_train_ranker.py     learning-to-rank, cross-fitted + the six objective heads
   05_evaluate.py         baselines, ablation, both counterfactual protocols
   12_export_serving.py   convert models to NumPy arrays for serving
+  13_oracle_control.py   is the full-catalog metric measuring anything? (the control)
   06..11                 MovieLens validation, ablations, diagnostics, test cases,
                          intent evaluation, objective evaluation
 src/recsys/
@@ -635,6 +636,17 @@ Run the tests with `python -m pytest tests/ -q` (needs the build set).
 | 5 · Evaluation | `python scripts/05_evaluate.py` | `artifacts/evaluation.json` |
 | 6 · Export | `python scripts/12_export_serving.py` | `artifacts/serving_models.npz` |
 | All | `python scripts/build_all.py` | everything above, in order |
+
+Analyses that run outside the main chain, because they need the simulator's hidden
+generative variables (which the serving artifacts deliberately exclude):
+
+| Analysis | Command | Output |
+|---|---|---|
+| Oracle control | `python scripts/13_oracle_control.py` | `artifacts/oracle_control.json` (~10 s) |
+| Objective comparison | `python scripts/11_evaluate_objectives.py` | `artifacts/objective_evaluation.json` |
+| Session intent | `python scripts/10_evaluate_intent.py` | `artifacts/intent_evaluation.json` |
+| Every test case, live | `python scripts/09_test_cases.py` | S1–S10 and F1–F10 on stdout |
+| MovieLens cross-check | `python scripts/06_validate_on_movielens.py` | the same CF code on real ratings |
 
 **What is fully reproducible:** everything. There is no private or external data in the
 default path — the catalog and the watch log are both generated from `config.yaml` plus
