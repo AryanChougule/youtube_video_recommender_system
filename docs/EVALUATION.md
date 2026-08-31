@@ -1,5 +1,39 @@
 # Evaluation
 
+## Metric coverage at a glance
+
+Every metric measured, where it is reported, and what it is computed by. Everything in the
+first group is written to `artifacts/evaluation.json` at k = 5, 10 and 20 by
+[`src/recsys/metrics.py`](../src/recsys/metrics.py).
+
+| Metric | Status | Where reported |
+|---|---|---|
+| **Precision@k** | measured | [Accuracy in full](#accuracy-metrics-in-full--precision-recall-map-ndcg-hit-rate-serendipity) |
+| **Recall@k** | measured | [Accuracy in full](#accuracy-metrics-in-full--precision-recall-map-ndcg-hit-rate-serendipity) |
+| **NDCG@k** | measured | [Protocol A](#protocol-a--re-ranking-logged-impressions), [Protocol B](#protocol-b--1-positive-vs-100-sampled-negatives), [Accuracy in full](#accuracy-metrics-in-full--precision-recall-map-ndcg-hit-rate-serendipity) |
+| **MAP@k** | measured | [Accuracy in full](#accuracy-metrics-in-full--precision-recall-map-ndcg-hit-rate-serendipity) |
+| **Diversity** (intra-list) | measured | [Beyond-accuracy](#beyond-accuracy-metrics) |
+| **Coverage** | measured | [Beyond-accuracy](#beyond-accuracy-metrics) |
+| **Novelty** (self-information) | measured | [Beyond-accuracy](#beyond-accuracy-metrics) |
+| **Latency** (p50/p95/mean) | measured | [Latency](#latency) |
+| **User satisfaction** | measured, via a simulated survey label | [User satisfaction](#user-satisfaction-metrics) |
+| **Business metrics** | *proxies only* — real ones need real users | [Business metrics](#business-metrics) |
+| Hit rate@k, MRR | measured | Protocols A and B |
+| Serendipity@k | measured | [Accuracy in full](#accuracy-metrics-in-full--precision-recall-map-ndcg-hit-rate-serendipity) |
+| Gini (exposure fairness) | measured | [Beyond-accuracy](#beyond-accuracy-metrics), [Business metrics](#business-metrics) |
+| AUC, watch-time-weighted AUC, log loss | measured | [Per-objective](#per-objective-ranking-metrics) |
+| Top-1 within feed | measured | [Protocol A](#protocol-a--re-ranking-logged-impressions) |
+
+Two of these need justification rather than a number, and both are given one in their own
+section: **business metrics** cannot be measured offline without inventing them, and
+**user satisfaction** is measured against a *simulated* survey signal, not real people.
+
+The single most important thing on this page is not any individual metric. It is
+[Finding 2](#finding-2--the-standard-offline-protocol-does-not-measure-the-recommender):
+the standard full-catalog protocol, on which precision, recall and MAP are usually quoted,
+**does not measure recommendation quality on logged data** — and this project demonstrates
+that with an oracle control rather than asserting it.
+
 ## Protocol
 
 **Global temporal split.** One wall-clock cutoff at the 80th percentile of impression
@@ -186,6 +220,34 @@ protocols are reported and neither is quoted alone.
 
 ---
 
+## Accuracy metrics in full — precision, recall, MAP, NDCG, hit rate, serendipity
+
+Every accuracy metric is computed at k = 5, 10 and 20 by
+[`src/recsys/metrics.py`](../src/recsys/metrics.py) and persisted to
+`artifacts/evaluation.json`. At k = 10, on the full-catalog protocol:
+
+| Strategy | P@10 | R@10 | MAP@10 | NDCG@10 | HR@10 | Serendipity@10 |
+|---|---|---|---|---|---|---|
+| popularity | 0.0151 | 0.0164 | 0.0078 | 0.0121 | 0.1367 | 0.0007 |
+| CF — ALS only | 0.0107 | 0.0104 | 0.0042 | 0.0119 | 0.1013 | 0.0100 |
+| hybrid recall only | 0.0123 | 0.0111 | 0.0044 | 0.0125 | 0.1100 | 0.0115 |
+| **FULL pipeline** | 0.0104 | 0.0110 | 0.0046 | 0.0106 | 0.0947 | 0.0100 |
+| content only | 0.0083 | 0.0080 | 0.0035 | 0.0090 | 0.0767 | 0.0083 |
+| CF — co-visitation only | 0.0066 | 0.0065 | 0.0022 | 0.0065 | 0.0627 | 0.0066 |
+| random | 0.0013 | 0.0011 | 0.0005 | 0.0010 | 0.0133 | 0.0013 |
+
+**Read this table together with Finding 2, not on its own.** Popularity tops precision,
+recall and MAP here — and it is the worst product in the table, at 0.5% catalog coverage
+with a Gini of 0.997. That is not a paradox; it is the point. Full-catalog retrieval
+metrics reward matching the logging policy, and the logging policy was popularity-biased.
+The counterfactual protocols above are the ones that answer the product question.
+
+The one column where the ranking matches intuition is **serendipity** — relevant *and*
+non-obvious. Popularity scores 0.0007, essentially zero by construction, because nothing
+it recommends is a surprise. The full pipeline scores 0.0100, roughly 14x higher.
+
+---
+
 ## Beyond-accuracy metrics
 
 Accuracy alone will happily reward a system that shows everyone the same 20 viral videos.
@@ -217,6 +279,66 @@ Two things this table shows that NDCG cannot:
 | Novelty | mean −log₂ p(i) | how obscure the picks are |
 | Intra-list diversity | mean pairwise (1 − cos) | how varied one page is |
 | Serendipity | relevant AND not in the popularity top-K | value beyond the obvious |
+
+## User-satisfaction metrics
+
+The brief lists user satisfaction as a metric to consider. It is normally the hardest one
+to get, because satisfaction is not an engagement signal — it is the thing engagement is a
+*proxy* for, and the two come apart exactly where it matters. YouTube solves this by asking
+people directly, in surveys.
+
+This project cannot ask anyone, so the simulator emits a survey-like `satisfied` label from
+a separate generative path (affinity, quality, watch fit, and a strong negative clickbait
+term), and it is measured as a first-class objective rather than inferred from watch time:
+
+| configuration | engagement@1 | **satisfaction@1** | NDCG(satisfaction) | completion@1 | clickbait@1 |
+|---|---|---|---|---|---|
+| A. CTR-optimised | 0.1983 | 0.1473 | 0.3857 | 0.0055 | 0.2057 |
+| C. Satisfaction-only | 0.1973 | **0.1462** | **0.3897** | 0.0095 | **0.2026** |
+| D. Multi-objective (shipped) | 0.1963 | 0.1453 | 0.3893 | **0.0100** | 0.2044 |
+
+`NDCG(satisfaction)` re-grades the identical ranking by whether the click was *satisfying*
+rather than by watch fraction — the same ordering, a different question asked of it.
+
+**The honest reading:** satisfaction@1 barely moves between objectives (0.1473 to
+0.1453). Completion@1 nearly doubles. Clickbait exposure does not move at all. A
+satisfaction *label* is not enough on its own — the ranker also needs features that
+correlate with it, and this feature set does not have them ([F9](TEST_CASES.md)).
+
+---
+
+## Business metrics
+
+Real business metrics — revenue, retention, DAU, session length, subscriber growth —
+**require real users**, and every one of them is a longitudinal measurement that no offline
+protocol can produce. Claiming them here would be fabrication, so this section states what
+*is* measurable and what would have to be instrumented.
+
+**Measurable now, as leading indicators:**
+
+| Business concern | Proxy measured here | Value | Why it is the right proxy |
+|---|---|---|---|
+| Inventory utilisation | catalog coverage | 0.562 vs popularity's 0.004 | a catalog nobody sees earns nothing; 0.4% coverage strands 99.6% of the library |
+| Creator-ecosystem health | Gini of exposure | 0.799 vs popularity's 0.997 | winner-take-all exposure drives mid-tail creators off a platform |
+| Brand / trust risk | clickbait@1 | 0.2044 | bait converts short-term clicks into long-term distrust |
+| Content depth | completion@1 | 0.0100 (+82% vs CTR-optimised) | finished videos, not opened ones, indicate delivered value |
+| Serving cost | p50 latency | ~17 ms, one CPU core | cost per request is a real constraint at scale |
+
+**Not measurable without an online system,** and stated as such rather than approximated:
+click-through lift, watch-time-per-session, retention/churn, revenue per user, subscriber
+conversion. These need an A/B or interleaving harness against live traffic — the highest
+priority item in [FUTURE_WORK.md](FUTURE_WORK.md), and the reason
+[Finding 2](#finding-2--the-standard-offline-protocol-does-not-measure-the-recommender)
+matters: offline metrics disagree with each other here, so only an online experiment
+settles which change is actually better.
+
+**Gini deserves a caveat.** The full pipeline's 0.799 is
+better than popularity's 0.997, and still not defensible for a real
+creator ecosystem. It is reported because hiding it would be the dishonest choice, and it is
+on the roadmap as an explicit exposure-fairness constraint rather than a hoped-for side
+effect of diversity re-ranking.
+
+---
 
 ## Per-objective ranking metrics
 

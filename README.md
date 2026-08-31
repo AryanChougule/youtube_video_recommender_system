@@ -32,6 +32,29 @@ No installation. Open the [live demo](https://reelrank-one.vercel.app) and:
 
 ---
 
+## Problem statement
+
+**Select ~24 videos from a 6,000-item catalog for a viewer identified only by what they have
+watched in this session, rank them against what actually makes a good recommendation rather
+than what is easiest to measure, and be able to explain every choice — in under 100 ms, with
+no GPU.**
+
+The hard part is the middle clause. A recommender optimised for clicks learns to produce
+clickbait, because clickbait maximises clicks. Optimising watch time instead is the standard
+fix and is genuinely better — but watch time is *also* a proxy, and proxies drift from the
+thing they proxy for. That drift is the problem this system is built around.
+
+### Use case and motivation
+
+Video recommendation is where this trade-off bites hardest: the catalog turns over hourly,
+the same engagement signal serves both "this was worth my time" and "I could not look away",
+and the consequences of getting it wrong are borne by viewers and creators rather than by the
+metric. It is also the domain with the best-documented public architecture to benchmark
+against ([Covington et al., 2016](https://research.google/pubs/pub45530/);
+[Zhao et al., 2019](https://dl.acm.org/doi/10.1145/3298689.3346997)), which makes it possible
+to be specific about what was reproduced, what was deliberately simplified, and why —
+see [COMPARISON.md](docs/COMPARISON.md).
+
 ## What this project does
 
 Given a viewer's watch history, ReelRank returns a ranked, diversified page of videos and
@@ -267,7 +290,28 @@ Top five by permutation importance: `log_duration_min` (0.0506), `category_affin
 
 Measured on a **global temporal split** (train on the past, test on the future), 1,500
 held-out users, 6,000-video catalog. Every model upstream of the ranker respects the same
-cutoff. Full detail and protocol definitions: [EVALUATION.md](docs/EVALUATION.md).
+cutoff. Full detail, definitions and the complete metric tables:
+[EVALUATION.md](docs/EVALUATION.md).
+
+**What is measured:** Precision@k · Recall@k · NDCG@k · MAP@k · Hit rate@k · MRR ·
+Serendipity@k · Coverage · Novelty · Intra-list diversity · Gini (exposure fairness) ·
+Latency (p50/p95) · AUC + watch-time-weighted AUC + log loss · User satisfaction (via a
+simulated survey label) · business *proxies* — all at k = 5, 10 and 20, persisted to
+`artifacts/evaluation.json`. Two need justification rather than a number, and get one:
+real business metrics need real users, and satisfaction here is simulated, not surveyed.
+
+Full accuracy table at k=10 (full-catalog protocol), which should be read together with
+*the headline caveat* further down rather than on its own:
+
+| Strategy | P@10 | R@10 | MAP@10 | NDCG@10 | Serendipity@10 |
+|---|---|---|---|---|---|
+| popularity | 0.0151 | 0.0164 | 0.0078 | 0.0121 | 0.0007 |
+| **FULL pipeline** | 0.0104 | 0.0110 | 0.0046 | 0.0106 | **0.0100** |
+
+Popularity tops precision, recall and MAP — and is the worst product in the repo, at 0.4%
+catalog coverage. That is not a paradox; it is [Finding 2](docs/EVALUATION.md#finding-2--the-standard-offline-protocol-does-not-measure-the-recommender).
+The one column matching intuition is **serendipity** (relevant *and* non-obvious), where
+popularity scores ~0 by construction and the pipeline scores 14× higher.
 
 ### Classification metrics (do we separate the labels?)
 
@@ -588,8 +632,33 @@ tests/        61 tests; the interesting ones are regressions for real bugs
 
 ## Local setup
 
-**Building needs `requirements-build.txt`** — plain `requirements.txt` is the serving set and
-deliberately excludes pandas and scikit-learn.
+### Run it (no training required)
+
+Every serving artifact is committed, so a fresh clone serves immediately — nothing to build,
+and only five dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+```bash
+python -m uvicorn recsys.api.app:app --app-dir src --port 7860
+```
+
+Then open <http://localhost:7860>. That is the whole thing: `requirements.txt` is NumPy,
+FastAPI, Uvicorn, Pydantic and PyYAML — no pandas, no scikit-learn, no PyTorch.
+
+Or with Docker, which builds the models into the image:
+
+```bash
+docker build -t reelrank . && docker run -p 7860:7860 reelrank
+```
+
+### Rebuild everything from scratch
+
+Reproducing the artifacts needs the **build** dependency set — plain `requirements.txt` is
+the serving set and deliberately excludes pandas and scikit-learn, so `build_all.py` will
+fail at stage 02 without this:
 
 ```bash
 pip install -r requirements-build.txt
@@ -599,18 +668,10 @@ pip install -r requirements-build.txt
 python scripts/build_all.py
 ```
 
-```bash
-python -m uvicorn recsys.api.app:app --app-dir src --port 7860
-```
-
-Then open <http://localhost:7860>. The full build takes ~7 minutes; `--quick` does a
-1-minute smoke build. Or skip all of it:
-
-```bash
-docker build -t reelrank . && docker run -p 7860:7860 reelrank
-```
-
-Run the tests with `python -m pytest tests/ -q` (needs the build set).
+The full build takes ~7 minutes (`--quick` does a 1-minute smoke build, `--skip-eval` skips
+stage 5, which is the slow one at ~30 minutes). Run the tests with `python -m pytest tests/ -q`
+— they also need the build set, because some of them verify the NumPy export against
+scikit-learn.
 
 ## How to use
 
@@ -679,14 +740,20 @@ build step and a reviewer can run the app without training anything. The fitting
 | Shows inputs | Persona picker, editable watch history, search, live policy sliders | ✅ |
 | Shows outputs | YouTube-style feed with rank, score, category, source badges | ✅ |
 | Shows **why** | "Why this video?" panel: all three stages + six objectives + raw payload | ✅ |
-| Problem statement & use case | [README](#what-this-project-does) · [ARCHITECTURE.md](docs/ARCHITECTURE.md) | ✅ |
+| Problem statement | [README](#problem-statement) · [ARCHITECTURE.md](docs/ARCHITECTURE.md) | ✅ |
+| Use case & motivation | [README](#use-case-and-motivation) | ✅ |
 | Approach & architecture | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | ✅ |
 | Methodology | [METHODOLOGY.md](docs/METHODOLOGY.md) — every algorithm and its rejected alternative | ✅ |
 | Dataset | [DATASET.md](docs/DATASET.md) — sources, simulator, parameters | ✅ |
 | Technologies used | [Tech stack](#tech-stack) | ✅ |
 | Assumptions | [ASSUMPTIONS.md](docs/ASSUMPTIONS.md) — each with what breaks if wrong | ✅ |
 | Design decisions | [DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md) | ✅ |
-| Evaluation methodology | [EVALUATION.md](docs/EVALUATION.md) — classification *and* ranking metrics, 2 counterfactual protocols, oracle control | ✅ |
+| Evaluation methodology | [EVALUATION.md](docs/EVALUATION.md) — 2 counterfactual protocols + oracle control, with [a metric-coverage table](docs/EVALUATION.md#metric-coverage-at-a-glance) | ✅ |
+| Metrics — Precision, Recall, NDCG, MAP | measured at k=5/10/20, [reported in full](docs/EVALUATION.md#accuracy-metrics-in-full--precision-recall-map-ndcg-hit-rate-serendipity) | ✅ |
+| Metrics — Diversity, Coverage, Novelty | [Beyond-accuracy](docs/EVALUATION.md#beyond-accuracy-metrics), plus Gini and Serendipity | ✅ |
+| Metrics — Latency | p50/p95/mean, [measured](docs/EVALUATION.md#latency); a test fails the build above 250 ms | ✅ |
+| Metrics — User satisfaction | [measured](docs/EVALUATION.md#user-satisfaction-metrics) against a simulated survey label, not real users | ⚠️ documented |
+| Metrics — Business | [proxies measured](docs/EVALUATION.md#business-metrics); revenue/retention need real users and are stated as out of reach | ⚠️ documented |
 | Successful test cases | S1–S10, [TEST_CASES.md](docs/TEST_CASES.md), executable | ✅ |
 | **Failure** test cases | F1–F10, [TEST_CASES.md](docs/TEST_CASES.md), with cause and fix path | ✅ |
 | Limitations | [LIMITATIONS.md](docs/LIMITATIONS.md) | ✅ |

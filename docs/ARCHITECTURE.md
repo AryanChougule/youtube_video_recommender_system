@@ -3,9 +3,16 @@
 ## Problem statement
 
 Given a viewer — identified only by what they have watched in this browser session — select
-~24 videos from a 6,000-item catalog that maximise **expected watch time**, subject to the
-page being diverse, containing fresh material, and remaining explainable. Serve in under
-100 ms with no GPU.
+~24 videos from a 6,000-item catalog that maximise a **weighted combination of six
+outcomes** (click, long watch, completion, like, satisfaction, and *not* dismissing),
+subject to the page being diverse, containing fresh material, and remaining explainable.
+Serve in under 100 ms with no GPU.
+
+The objective started as expected watch time, which is already a large improvement on
+clicks. It is still not enough: watch time is nearly blind to clickbait (correlation +0.01
+on this project's log), so it cannot distinguish a genuinely good video from one that kept
+you waiting for a payoff that never came. Hence six objectives, with the weights chosen per
+request rather than fixed at training time — see [METHODOLOGY §2.6](METHODOLOGY.md).
 
 Three sub-problems fall out of that, and they have genuinely different shapes:
 
