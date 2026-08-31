@@ -366,7 +366,7 @@ opposite directions.
 ```
                         full-catalog NDCG@10    Protocol A top-1
 Stage 1 recall only            0.0125               0.1840
-+ learned ranker               0.0107  ↓            0.1930  ↑
++ learned ranker               0.0107  ↓            0.1933  ↑
 ```
 
 Two metrics disagreeing about the same change means one is wrong for the purpose. And per page,

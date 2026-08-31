@@ -131,23 +131,31 @@ class NumpyHGB:
         if n == 0:
             return out
 
-        for root in self.tree_offsets:
-            # All rows walk the tree together: `node` holds each row's current
-            # position and one boolean mask retires rows as they reach leaves.
-            node = np.full(n, root, dtype=np.int64)
-            active = ~self.is_leaf[node]
-            while active.any():
-                idx = np.flatnonzero(active)
-                here = node[idx]
-                x = X[idx, self.feature_idx[here]]
-                # NaN is a real branch decision, not an error: the tree learned
-                # which way missing values should go while it was being fitted.
-                missing = np.isnan(x)
-                go_left = np.where(missing, self.missing_go_to_left[here],
-                                   x <= self.num_threshold[here])
-                node[idx] = np.where(go_left, self.left[here], self.right[here])
-                active[idx] = ~self.is_leaf[node[idx]]
-            out += self.value[node]
+        # Every (row, tree) pair walks its tree simultaneously. Looping per
+        # tree instead costs one Python iteration per tree, and with ~100 trees
+        # over a few hundred candidates the NumPy calls are so small that the
+        # interpreter overhead dominates -- that version measured 4.5x slower
+        # than scikit-learn's compiled predictor. Batching turns ~100 Python
+        # iterations into ~15 (one per level of depth), and the arrays get big
+        # enough for NumPy to be worth calling.
+        n_trees = len(self.tree_offsets)
+        node = np.repeat(self.tree_offsets[None, :], n, axis=0).ravel()
+        rows = np.repeat(np.arange(n), n_trees)
+
+        active = ~self.is_leaf[node]
+        while active.any():
+            idx = np.flatnonzero(active)
+            here = node[idx]
+            x = X[rows[idx], self.feature_idx[here]]
+            # NaN is a real branch decision, not an error: the tree learned
+            # which way missing values should go while it was being fitted.
+            go_left = np.where(np.isnan(x), self.missing_go_to_left[here],
+                               x <= self.num_threshold[here])
+            node[idx] = np.where(go_left, self.left[here], self.right[here])
+            active[idx] = ~self.is_leaf[node[idx]]
+
+        # One leaf value per (row, tree); sum the trees back per row.
+        out += self.value[node].reshape(n, n_trees).sum(axis=1)
         return out
 
     def predict_proba(self, X) -> np.ndarray:

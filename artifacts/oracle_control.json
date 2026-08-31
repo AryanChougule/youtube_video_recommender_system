@@ -1,0 +1,10 @@
+{
+  "ndcg_at_k": 10,
+  "n_users": 1500,
+  "results": {
+    "ORACLE": 0.01654,
+    "popularity": 0.012109,
+    "content_only": 0.009507
+  },
+  "generated_at": "2026-08-31T05:01:40Z"
+}

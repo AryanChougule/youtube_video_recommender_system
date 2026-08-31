@@ -176,7 +176,7 @@ Comparing objectives on identical feeds (Protocol A):
 | objective | engage@1 | satisf@1 | clickbait@1 | complete@1 |
 |---|---|---|---|---|
 | A. CTR-optimised | 0.1972 | 0.1463 | 0.2059 | 0.0055 |
-| B. Watch-time optimised | 0.1930 | 0.1413 | 0.2091 | 0.0035 |
+| B. Watch-time optimised | 0.1933 | 0.1413 | 0.2091 | 0.0035 |
 | C. Satisfaction-only | 0.1972 | 0.1457 | **0.2023** | 0.0097 |
 | D. Multi-objective (shipped) | 0.1967 | 0.1452 | 0.2048 | **0.0100** |
 

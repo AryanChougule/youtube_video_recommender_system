@@ -50,6 +50,7 @@ artifacts/*
 !artifacts/ranker_report.json
 !artifacts/intent_evaluation.json
 !artifacts/objective_evaluation.json
+!artifacts/oracle_control.json
 
 # local editor/agent config
 .claude/

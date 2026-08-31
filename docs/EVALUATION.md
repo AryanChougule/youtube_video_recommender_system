@@ -75,13 +75,19 @@ catalog, report NDCG. Run it and you get this:
 
 | Full-catalog retrieval | NDCG@10 | recall@20 |
 |---|---|---|
-| **ORACLE** (true generative parameters) | **0.0161** | — |
+| **ORACLE** (true generative parameters) ‡ | **0.0165** | — |
 | hybrid recall only (Stage 1) | 0.0125 | 0.0222 |
 | popularity | 0.0121 | 0.0267 |
 | CF — ALS only | 0.0119 | 0.0198 |
-| FULL pipeline (Stage 1+2+3) | 0.0107 | 0.0191 |
+| FULL pipeline (Stage 1+2+3) | 0.0106 | 0.0187 |
 | content only | 0.0090 | 0.0167 |
 | random | 0.0010 | 0.0022 |
+
+‡ *From `python scripts/13_oracle_control.py`, which needs the simulator's hidden
+generative variables and so runs outside stage 5. Its baselines come from
+`counterfactual.make_scorers`, which builds the user profile slightly differently
+from the stage-5 baselines — there, popularity scores 0.0121 and content-only 0.0095. The oracle's margin
+over both is the point, and it holds either way.*
 
 Two things are wrong here, and they are different problems.
 
@@ -95,7 +101,7 @@ of metric in OPPOSITE directions:**
 | | full-catalog NDCG@10 | Protocol A top-1 |
 |---|---|---|
 | Stage 1 recall only | **0.0125** | 0.1840 † |
-| + learned ranker | 0.0107 ↓ | **0.1930** ↑ |
+| + learned ranker | 0.0107 ↓ | **0.1933** ↑ |
 
 † *content-only, the strongest single Stage-1 signal.*
 
@@ -103,9 +109,9 @@ Two metrics disagreeing about the same change means one of them is wrong **for t
 Full-catalog NDCG rewards casting a wide net over the catalog; Protocol A measures whether the
 right video went on top of a page the user actually saw. Only the second is the product question.
 
-The **oracle** scores 0.0161 — above everything else — so the metric is not pure noise, and
-there is genuine headroom our models do not capture. But it is not measuring what we are trying
-to improve.
+The **oracle** scores 0.0165 — above everything else — so the metric is not pure
+noise, and there is genuine headroom our models do not capture. But it is not measuring what we
+are trying to improve. Reproduce it with `python scripts/13_oracle_control.py`.
 
 > On an earlier build (before latent clickbait entered the generator) the oracle scored *below*
 > the popularity baseline outright — an even starker version of the same point. Both builds
@@ -138,10 +144,10 @@ have put the right video on top?* — and is the offline protocol that best pred
 
 6,000 test-period feeds of 8 items each, one click per feed:
 
-| Scorer | top-1 | NDCG | MRR |
+| scorer | top-1 | NDCG | MRR |
 |---|---|---|---|
-| `[ref]` shown position † | 0.7713 | 0.9086 | 0.8768 |
-| **LEARNED RANKER (19 features)** | **0.1930** | **0.5562** | **0.4183** |
+| `[ref] shown position` | 0.7713 | 0.9086 | 0.8768 |
+| **LEARNED RANKER** | **0.1933** | **0.5565** | **0.4187** |
 | content only | 0.1840 | 0.5514 | 0.4119 |
 | CF — ALS only | 0.1622 | 0.5259 | 0.3804 |
 | random | 0.1415 | 0.5018 | 0.3507 |
@@ -163,10 +169,10 @@ The hybrid ranker leads every genuine model, and is 1.36× random.
 
 Isolates pure ranking ability from the "find the needle the old policy hid" retrieval problem.
 
-| Scorer | HR@10 | NDCG@10 | mean rank |
+| scorer | HR@10 | NDCG@10 | mean rank |
 |---|---|---|---|
 | content only | **0.3703** | **0.1821** | 30.91 |
-| **LEARNED RANKER** | 0.3567 | 0.1776 | **28.49** |
+| **LEARNED RANKER** | 0.3586 | 0.1780 | **28.33** |
 | CF — ALS only | 0.2792 | 0.1484 | 37.24 |
 | popularity | 0.2665 | 0.1484 | 36.29 |
 | CF — co-visitation only | 0.1428 | 0.0758 | 48.75 |
@@ -259,7 +265,7 @@ every number in this table is checkable without rerunning training.
 
 ## Latency
 
-p50 ≈ 22 ms end-to-end (recall ~3 ms, ranking ~12 ms, policy ~5 ms), p95 < 30 ms, on one CPU
+p50 ≈ 17 ms end-to-end (recall ~2 ms, ranking ~7 ms, policy ~4 ms), p95 < 20 ms, on one CPU
 core with 6,000 items. A test asserts p95 < 250 ms so a regression fails CI rather than
 production.
 

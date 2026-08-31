@@ -120,13 +120,13 @@ becoming a single-creator page. Two policies pulling in opposite directions, bot
 ## S7 · Diversity control is real, not decorative
 
 ```
-λ = 1.0   diversity 0.729   categories  1   mix {Food: 16}
-λ = 0.3   diversity 0.933   categories 10   mix {Food: 7, Gaming: 1, Education: 1, Sci&Tech: 1,
-                                                 Sports: 1, Health: 1, Ent: 1, Music: 1,
-                                                 Tech: 1, Finance: 1}
+λ = 1.0   diversity 0.6696   categories 1   mix {Food: 16}
+λ = 0.3   diversity 0.8869   categories 9   mix {Food: 8, Sports: 1, Education: 1, Health: 1,
+                                                 Travel: 1, Sci&Tech: 1, Howto: 1, Gaming: 1,
+                                                 Music: 1}
 ```
 
-✅ One slider moves the page from a monoculture to 10 categories. The UI exposes this live.
+✅ One slider moves the page from a monoculture to 9 categories. The UI exposes this live.
 
 ## S8 · Cross-category bridge — the payoff of latent micro-topics
 
@@ -314,7 +314,7 @@ reachable is more honest than one that hides them behind clamped ranges.
 
 ```
 full-catalog NDCG@10:   Stage-1 recall 0.0125  >  popularity 0.0121  >  FULL pipeline 0.0107
-Protocol A top-1:       FULL pipeline  0.1930  >  content 0.1840  >  popularity 0.1323
+Protocol A top-1:       FULL pipeline  0.1933  >  content 0.1840  >  popularity 0.1323
 ```
 
 ❌ On the standard offline protocol, adding the learned ranker makes things *worse*, and a

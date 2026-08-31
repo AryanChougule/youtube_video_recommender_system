@@ -193,6 +193,93 @@ seconds), and Stage 3 blends that score with freshness and diversity terms. You 
 blend an uncalibrated pairwise margin with anything. Pairwise is the honest next step
 ([FUTURE_WORK.md](FUTURE_WORK.md)).
 
+### 2.6 Multi-objective ranking — six heads over one feature matrix
+
+Section 2.1 replaced clicks with watch time. This section explains why watch time is
+*also* not enough, and what the shipped ranker does instead.
+
+**The pipeline, precisely:**
+
+```
+user history + candidate item
+            ↓
+   19 engineered features           one shared FeatureBuilder, train and serve
+            ↓
+   6 independent HistGradientBoostingClassifier heads
+            ↓
+   6 calibrated probabilities
+            ↓
+   value = Σ wₖ · Pₖ(x)             weights supplied PER REQUEST
+            ↓
+   Stage 3 policy re-rank
+```
+
+**What each head predicts, and its default weight:**
+
+| head | label | positive rate | default weight |
+|---|---|---|---|
+| `click` | the impression was opened | 14.1% | +0.10 |
+| `long_watch` | watched ≥ 50% | — | +0.25 |
+| `completion` | watched ≥ 90% | — | +0.15 |
+| `liked` | explicit positive | — | +0.15 |
+| `satisfied` | the survey-like signal | — | **+0.40** |
+| `dismissed` | bounced almost immediately | 0.44% | **−0.20** |
+
+The weights are an **engineering choice, not YouTube's numbers** — YouTube has never
+published theirs. They encode a product stance: a click is worth little alone, a satisfying
+watch is worth most, and bouncing is actively bad.
+
+**Why click-only optimisation is insufficient — measured, not asserted.** A click-optimised
+ranker learns to produce clickbait, because clickbait maximises clicks. Watch time was the
+first fix, and on this project's log it is *nearly blind* to the problem:
+
+```
+top-decile clickbait : watch 0.425, satisfied 42%
+bottom-half clickbait: watch 0.438, satisfied 73%
+```
+
+Correlation between watch time and clickbait: **+0.01**. Bait holds attention slightly *and*
+draws in lower-affinity viewers; the effects cancel. Satisfaction is not blind to it at all.
+That gap is the entire justification for this section — if watch time and satisfaction agreed,
+six heads would be complexity for its own sake.
+
+**Why one shared feature matrix.** All six questions are asked about the same (user, item)
+pair, so the same 19 features are sufficient statistics for all of them. Building six matrices
+would cost six times as much for identical numbers, and Stage 2 has a ~12 ms budget.
+
+**Why independently trained.** Each head fits its own label with its own positive rate,
+spanning 14.1% (`click`) to 0.44% (`dismissed`). Joint training would need a shared loss and a
+weighting between tasks — one more thing to tune — with no mechanism to share representation
+inside a GBDT anyway. Note that the IPS/watch-time sample weights apply to the `click` head
+**only**: the outcome heads are conditioned on the click having happened, so reweighting them
+by watch time would double-count the very thing they predict.
+
+**Why calibrated probabilities matter.** `0.40 × P(satisfied)` only means something if
+`P(satisfied)` is a probability. An uncalibrated margin cannot be meaningfully multiplied by a
+weight or compared across heads, and the whole point is that an evaluator can move a weight and
+reason about what should happen. Calibration is what makes the objective *legible*.
+
+**How dismissal enters.** With a negative weight, so a high `P(dismissed)` subtracts. It is the
+only head that can demote, which is what makes the combination a genuine trade-off rather than
+a sum of goods.
+
+**The trade-off, stated plainly.** Six independent GBDTs are simpler, faster and far more
+interpretable than the shared-trunk Multi-gate Mixture-of-Experts
+([Zhao et al., 2019](https://dl.acm.org/doi/10.1145/3298689.3346997)) a platform at YouTube's
+scale would use. The cost is real: independent heads **cannot share representation**, so
+correlated tasks re-learn the same structure six times. That is wasteful, not wrong. At 6k
+items with one simulated label stream per outcome, an MoE would be capacity we cannot feed.
+This is the appropriate choice for the data and scope available — not a claim to be state of
+the art.
+
+**What it buys, and what it does not.** Completion@1 rises 0.0055 → 0.0100 (+82%) and the
+objective becomes switchable per request with no retraining. It does **not** reduce clickbait
+exposure (0.2057 → 0.2044), because clickbait is invisible to every served feature
+(GBDT R² = −0.11 against +0.64 for latent quality). No ranker can optimise an objective absent
+from its inputs — which makes the next step a *feature* problem, not a model problem, and is
+precisely why YouTube runs user surveys instead of inferring satisfaction from engagement
+metadata. Full results: [EVALUATION.md](EVALUATION.md), [INTENT_AND_OBJECTIVES.md](INTENT_AND_OBJECTIVES.md).
+
 ---
 
 ## Stage 3 · Policy

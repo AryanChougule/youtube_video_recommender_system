@@ -24,8 +24,9 @@ No installation. Open the [live demo](https://reelrank-one.vercel.app) and:
    weights and contributions, the ranker score, and which policy rules fired.
 3. **Click "Max satisfaction"** in the Recommendation Lab → the objective changes and the
    feed re-ranks live, with **no retraining**. Compare against "Max engagement".
-4. **Drag the MMR slider to 1.0** → watch diversity collapse into a monoculture. The
-   controls are real, not decorative.
+4. **Drag the MMR slider to 1.0** → the page collapses into a monoculture. Measured on a
+   5-video Food history: λ=0.3 gives **9 distinct categories** (diversity 0.8869), λ=1.0
+   gives **1** (0.6696). The controls are real, not decorative.
 5. **Search `brown butter`** (works) then **`machine learning`** (nothing in this catalog
    matches) → the second says so explicitly instead of faking results. See [F10](docs/TEST_CASES.md#f10--out-of-vocabulary-search-retrieves-nothing).
 
@@ -114,23 +115,23 @@ offline metric ever is. See [EVALUATION.md](docs/EVALUATION.md).
 │  6,000 videos                                                            │
 │         │                                                                │
 │  ┌──────▼──────────────────────────────────────────────┐                 │
-│  │ STAGE 1 · CANDIDATE GENERATION      cheap, recall    │  ~3 ms          │
+│  │ STAGE 1 · CANDIDATE GENERATION      cheap, recall    │  ~2 ms          │
 │  │  content embeddings · co-visitation · ALS ·          │                 │
 │  │  channel affinity · trending    ── fused with RRF ── │                 │
 │  └──────┬──────────────────────────────────────────────┘                 │
 │         │ ~400 candidates                                                │
 │  ┌──────▼──────────────────────────────────────────────┐                 │
-│  │ STAGE 2 · RANKING                expensive, precision│  ~12 ms         │
+│  │ STAGE 2 · RANKING                expensive, precision│   ~7 ms         │
 │  │  gradient-boosted models, 19 features                │                 │
 │  │  odds ≈ E[watch time] · six objective heads          │                 │
 │  └──────┬──────────────────────────────────────────────┘                 │
 │         │ ~24 items                                                      │
 │  ┌──────▼──────────────────────────────────────────────┐                 │
-│  │ STAGE 3 · POLICY                    what a PAGE needs│  ~5 ms          │
+│  │ STAGE 3 · POLICY                    what a PAGE needs│  ~4 ms          │
 │  │  MMR diversity · channel cap · freshness ·           │                 │
 │  │  reserved exploration slots                          │                 │
 │  └──────┬──────────────────────────────────────────────┘                 │
-│         ▼   YouTube-style UI + "Why this video?" panel     p50 ≈ 22 ms    │
+│         ▼   YouTube-style UI + "Why this video?" panel     p50 ≈ 17 ms    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -281,7 +282,7 @@ shown, so every label is observed. This is the protocol that best predicts onlin
 | Scorer | top-1 | NDCG | MRR |
 |---|---|---|---|
 | `[ref] shown position` ‡ | 0.7713 | 0.9086 | 0.8768 |
-| **LEARNED RANKER (19 features)** | **0.1930** | **0.5562** | **0.4183** |
+| **LEARNED RANKER (19 features)** | **0.1933** | **0.5565** | **0.4187** |
 | content only | 0.1840 | 0.5514 | 0.4119 |
 | CF — ALS only | 0.1622 | 0.5259 | 0.3804 |
 | random | 0.1415 | 0.5018 | 0.3507 |
@@ -298,7 +299,7 @@ thing" is actively worse than chance.
 | Scorer | HR@10 | NDCG@10 | mean rank |
 |---|---|---|---|
 | content only | **0.3703** | **0.1821** | 30.91 |
-| **LEARNED RANKER** | 0.3567 | 0.1776 | **28.49** |
+| **LEARNED RANKER** | 0.3586 | 0.1780 | **28.33** |
 | CF — ALS only | 0.2792 | 0.1484 | 37.24 |
 | popularity | 0.2665 | 0.1484 | 36.29 |
 | CF — co-visitation only | 0.1428 | 0.0758 | 48.75 |
@@ -345,21 +346,29 @@ essentially no cost in top-1, and makes the objective switchable per request. Wh
 
 ### Beyond accuracy
 
-| Strategy | coverage | Gini (exposure) | novelty (bits) | intra-list diversity | p50 latency |
-|---|---|---|---|---|---|
-| popularity | 0.004 | 0.997 | 9.69 | 0.863 | 0.7 ms |
-| content only | 0.890 | 0.509 | 12.78 | 0.536 | 0.5 ms |
-| CF — ALS only | 0.572 | 0.764 | 11.41 | 0.855 | 0.3 ms |
-| **FULL pipeline** | **0.564** | 0.798 | 12.04 | 0.718 | 15.0 ms |
+| Strategy | coverage | Gini (exposure) | novelty (bits) | intra-list diversity |
+|---|---|---|---|---|
+| popularity | 0.004 | 0.997 | 9.69 | 0.863 |
+| content only | 0.890 | 0.509 | 12.78 | 0.536 |
+| CF — ALS only | 0.572 | 0.764 | 11.41 | 0.855 |
+| **FULL pipeline** | **0.562** | 0.799 | 12.04 | 0.718 |
 
 The popularity baseline reaches **0.5% catalog coverage with a Gini of 0.997** — essentially
 the same 30 videos for everyone. Accuracy metrics alone will never tell you that.
 
 ### Latency
 
-p50 ≈ 22 ms end-to-end (recall ~3 ms, ranking ~12 ms, policy ~5 ms), p95 < 30 ms, one CPU
-core, 6,000 items. A test fails the build if p95 exceeds 250 ms. In production on Vercel,
-warm requests measure ~170 ms including network round-trip from the edge.
+p50 ≈ 17 ms end-to-end (recall ~2 ms, ranking ~7 ms, policy ~4 ms), p95 < 20 ms, on one CPU
+core with 6,000 items — measured after warm-up with single-threaded BLAS. A test fails the
+build if p95 exceeds 250 ms. On Vercel, warm requests measure ~170 ms including the network
+round-trip from the edge.
+
+The NumPy tree runtime is much of why this is fast. Traversing every tree for every row in
+one batched walk — rather than looping per tree — makes it **2.3× faster than scikit-learn's
+compiled predictor** on the 24-row explanation pass, and level with it on the 400-row ranking
+pass. The first, per-tree version was 4.5× *slower* than scikit-learn and pushed end-to-end
+p50 to 103 ms; the fix was recognising that ~100 tiny NumPy calls cost more in interpreter
+overhead than one call on an array 100× larger.
 
 ### The headline caveat: full-catalog NDCG is the wrong metric here
 
@@ -368,12 +377,13 @@ Adding the learned ranker moves the two families of metric in **opposite directi
 | | full-catalog NDCG@10 | Protocol A top-1 |
 |---|---|---|
 | Stage 1 recall only | **0.0125** | 0.1840 |
-| + learned ranker (shipped) | 0.0107 ↓ | **0.1930** ↑ |
+| + learned ranker (shipped) | 0.0107 ↓ | **0.1933** ↑ |
 
 Two metrics disagreeing about the same change means one is wrong *for this purpose*. The
 full-catalog metric rewards casting a wide net: a popularity list scores 0.0121, beating
-content-based retrieval (0.0090) outright. An **oracle** built from the simulator's own
-generative parameters scores 0.0161, so the metric is not pure noise — but the ranking that
+content-based retrieval (0.0095) outright. An **oracle** built from the simulator's own
+generative parameters scores 0.0165 (`python scripts/13_oracle_control.py`), so the
+metric is not pure noise — but the ranking that
 wins on it is not the ranking that wins on observed labels, which is why the counterfactual
 protocols are the ones quoted.
 

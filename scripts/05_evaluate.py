@@ -176,10 +176,14 @@ def main() -> None:
             "data_source": art.data_meta.get("source"),
             "caveat": (
                 "Full-catalog metrics measure the LOGGING POLICY as much as the "
-                "recommender: an oracle built from the true generative "
-                "parameters also loses to a popularity baseline on that "
-                "protocol. Sections 4 and 5 are the counterfactually-valid "
-                "views. See src/recsys/counterfactual.py."
+                "recommender. Run scripts/13_oracle_control.py for the control: "
+                "an oracle built from the true generative parameters scores "
+                "0.0165 against popularity's 0.0121, so the metric is not pure "
+                "noise -- but the ranking that wins on it is not the ranking "
+                "that wins on observed labels, and adding the learned ranker "
+                "moves the two families in opposite directions. Sections 4 and "
+                "5 are the counterfactually-valid views. "
+                "See src/recsys/counterfactual.py."
             ),
         },
         "results": [

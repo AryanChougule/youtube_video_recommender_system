@@ -74,7 +74,7 @@ evaluator can judge the *recommendations* rather than decode a new layout.
 | **Exploration** | Large-scale bandits with real traffic | 2 reserved slots, ε-greedy | No traffic to learn from. |
 | **Safety** | Borderline-content classifiers, authoritative sources for news/health, age gating | **None** | Out of scope, and a genuine gap ([L15](LIMITATIONS.md)). |
 | **Freshness** | Minutes | Rebuild cycle | Static artifacts. |
-| **Serving** | Distributed, sharded ANN, sub-100 ms at planetary scale | Single process, 22 ms, 6k items | Different problem. |
+| **Serving** | Distributed, sharded ANN, sub-100 ms at planetary scale | Single process, 17 ms, 6k items | Different problem. |
 | **Feedback loop** | Continuous online retraining | Batch, offline | No live traffic. |
 
 ### The most consequential difference: multi-task ranking
@@ -190,7 +190,7 @@ and a serving tier that survives index rebuilds without dropping traffic. That i
 an infrastructure project, not a modelling one.
 
 **Real-time feedback.** Here, a click updates the feed on the next request because
-everything is recomputed from scratch in ~22 ms against static artifacts. At scale
+everything is recomputed from scratch in ~17 ms against static artifacts. At scale
 the profile lives in a feature store, the co-visitation counts arrive from a
 streaming aggregation (minutes, not the nightly batch this repo does), and the
 freshness window for a trending video is measured in minutes. Getting "this video

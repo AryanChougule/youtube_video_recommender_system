@@ -35,7 +35,7 @@ would fix.
 ### L3 · Offline metrics cannot validate this system
 
 Demonstrated by contradiction: adding the learned ranker *lowers* full-catalog NDCG (0.0125 →
-0.0107) while *raising* Protocol A top-1 (0.1840 → 0.1930). Two metrics disagreeing about the
+0.0107) while *raising* Protocol A top-1 (0.1840 → 0.1933). Two metrics disagreeing about the
 same change means one is wrong for the purpose — and per page, the popularity scorer that looks
 strong on the full-catalog metric lands below random ([EVALUATION.md](EVALUATION.md)).
 

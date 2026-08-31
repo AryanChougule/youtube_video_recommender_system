@@ -23,9 +23,9 @@ rank, what the ranker scored it, and which policy rules fired.
 
 | Stage | What it does | Budget |
 |---|---|---|
-| **1 · Candidate generation** | 5 retrievers (content embeddings, co-visitation, implicit ALS, channel affinity, trending) fused with Reciprocal Rank Fusion | ~3 ms |
-| **2 · Ranking** | Gradient-boosted model over 19 features; positives weighted by watch time so the odds estimate *expected watch time*, not click probability | ~12 ms |
-| **3 · Policy** | MMR diversity, hard channel cap, freshness boost, reserved exploration slots | ~5 ms |
+| **1 · Candidate generation** | 5 retrievers (content embeddings, co-visitation, implicit ALS, channel affinity, trending) fused with Reciprocal Rank Fusion | ~2 ms |
+| **2 · Ranking** | Gradient-boosted model over 19 features; positives weighted by watch time so the odds estimate *expected watch time*, not click probability | ~7 ms |
+| **3 · Policy** | MMR diversity, hard channel cap, freshness boost, reserved exploration slots | ~4 ms |
 
 Stage 2 also runs **six calibrated objective heads** — click, long-watch, completion, liked,
 satisfied and dismissed — over the same feature matrix, combined by weights chosen *per
